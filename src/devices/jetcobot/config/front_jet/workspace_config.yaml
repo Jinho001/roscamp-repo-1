@@ -1,0 +1,30 @@
+# workspace_config.yaml — front_jet 작업 공간 설정
+# =====================================================
+# 실측/티칭 완료 후 null 값을 채우세요.
+# 모든 좌표 단위: mm, deg  (pymycobot send_coords 기준)
+# z_fixed : robot base_link 원점 기준 작업 표면 높이 (mm)
+# observe_pose : 촬영 자세 [x, y, z, rx, ry, rz]
+# place_pose   : 적재 자세 [x, y, z, rx, ry, rz]  (vision_place용)
+# grasp_rp     : 파지 roll/pitch 고정값 (deg)
+
+locations:
+  tray:
+    z_fixed: null       # ← 트레이 표면 높이 실측 후 입력 (mm)
+  shelf_A1:
+    z_fixed: null       # ← 선반 A1 표면 높이 실측 후 입력 (mm)
+  shelf_A2:
+    z_fixed: null       # ← 선반 A2 표면 높이 실측 후 입력 (mm)
+
+grasp_rp:
+  roll:  null           # ← 파지 roll  티칭 후 입력 (deg)
+  pitch: null           # ← 파지 pitch 티칭 후 입력 (deg)
+
+observe_pose:
+  tray:     null        # ← [x, y, z, rx, ry, rz] 티칭 후 입력
+  shelf_A1: null
+  shelf_A2: null
+
+place_pose:             # vision_place() 용 적재 좌표 (선택사항)
+  tray:     null
+  shelf_A1: null
+  shelf_A2: null
