@@ -12,16 +12,29 @@ safe_pick 미사용 — mc.send_coords() 직접 호출 (pymycobot 내부 IK).
 
 import argparse
 import os
+import sys
 import time
 
 import cv2
 import numpy as np
 from pymycobot import MyCobot280
 
-from .coord_transform    import get_object_coords_in_base, load_workspace_config
-from .yolo_detect_client import detect_object
-from .remote_capture     import RemoteCapture
-from .handeye_calibration import RemoteRobot
+# 단독 실행(python3 vision_pick.py) 과 패키지 실행(-m) 모두 지원
+_VISION_DIR = os.path.dirname(os.path.abspath(__file__))
+_ROOT_DIR   = os.path.abspath(os.path.join(_VISION_DIR, "..", "..", "..", ".."))
+if _ROOT_DIR not in sys.path:
+    sys.path.insert(0, _ROOT_DIR)
+
+try:
+    from src.devices.jetcobot.vision.coord_transform    import get_object_coords_in_base, load_workspace_config
+    from src.devices.jetcobot.vision.obb_detect_client  import detect_object
+    from src.devices.jetcobot.vision.remote_capture     import RemoteCapture
+    from src.devices.jetcobot.vision.handeye_calibration import RemoteRobot
+except ImportError:
+    from .coord_transform    import get_object_coords_in_base, load_workspace_config
+    from .obb_detect_client  import detect_object
+    from .remote_capture     import RemoteCapture
+    from .handeye_calibration import RemoteRobot
 
 
 # ── 기본 설정 ─────────────────────────────────────────────────────────────────
@@ -80,27 +93,10 @@ def vision_pick(
     config_dir: str = DEFAULT_CFG,
     camera_device: str = CAMERA_DEVICE,
     use_remote: bool = False,
+    server_url: str = "http://192.168.1.11:8081/detect",  # 메인 PC 기본 IP
 ) -> tuple[bool, str]:
     """
-    비전 픽업 1사이클.
-
-    Steps
-    -----
-    1. observe_pose 로 이동
-    2. 프레임 캡처 → YOLO OBB 검출
-    3. 좌표 변환 (get_object_coords_in_base)
-    4. pre_pick 고도 이동 → 하강 → 그리퍼 닫기 → 상승
-
-    Parameters
-    ----------
-    mc            : MyCobot280 인스턴스
-    location      : 'tray' | 'shelf_A1' | 'shelf_A2'
-    config_dir    : YAML 파일 디렉토리
-    camera_device : 카메라 디바이스 경로
-
-    Returns
-    -------
-    (success: bool, message: str)
+    비전 픽업 1사이클. (OpenCV 고전 비전 서버 연동 버전)
     """
     cfg = load_workspace_config(config_dir)
 
@@ -121,13 +117,15 @@ def vision_pick(
         return False, f"카메라 캡처 실패: {camera_device}"
 
     try:
-        result = detect_object(frame)
+        # 8081 포트의 고전 비전 서버를 기본으로 사용
+        result = detect_object(frame, server_url=server_url)
     except Exception as e:
-        return False, f"YOLO 서버 오류: {e}"
+        return False, f"검출 서버 오류: {e}"
 
     if not result["detected"]:
         return False, "상자 미검출"
 
+    # 다중 검출 결과 중 첫 번째(id=0) 상자 사용
     cx    = result["cx"]
     cy    = result["cy"]
     theta = result["theta"]
@@ -241,7 +239,7 @@ def vision_place(
 # 단독 테스트
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _run_test(robot_port: str, location: str, config_dir: str, n: int = 3, use_remote: bool = False, robot_host: str = "") -> None:
+def _run_test(robot_port: str, location: str, config_dir: str, n: int = 3, use_remote: bool = False, robot_host: str = "", server_url: str = "http://localhost:8081/detect") -> None:
     """픽업 n 회 연속 테스트 (place 좌표는 workspace_config 에서 자동 로드)."""
     if robot_host:
         print(f"[INFO] 원격 로봇 서버에 연결 중: {robot_host}:5001")
@@ -258,7 +256,7 @@ def _run_test(robot_port: str, location: str, config_dir: str, n: int = 3, use_r
         print(f"\n{'='*50}")
         print(f"  시도 {i+1}/{n}  (location={location})")
         print(f"{'='*50}")
-        ok, msg = vision_pick(mc, location, config_dir, use_remote=use_remote)
+        ok, msg = vision_pick(mc, location, config_dir, use_remote=use_remote, server_url=server_url)
         if ok:
             success_count += 1
             # 선반 place 좌표가 config 에 있다면 자동 실행
@@ -283,9 +281,10 @@ def main():
     parser.add_argument("--trials",     type=int, default=3)
     parser.add_argument("--remote",     action="store_true", help="원격 영상 수신")
     parser.add_argument("--robot-host", default="", help="로봇 제어 PC IP (원격 제어용)")
+    parser.add_argument("--server-url", default="http://localhost:8081/detect", help="검출 서버 URL")
     args = parser.parse_args()
 
-    _run_test(args.port, args.location, args.config_dir, args.trials, args.remote, args.robot_host)
+    _run_test(args.port, args.location, args.config_dir, args.trials, args.remote, args.robot_host, args.server_url)
 
 
 if __name__ == "__main__":

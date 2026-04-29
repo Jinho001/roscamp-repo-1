@@ -75,6 +75,8 @@ async def detect(image: UploadFile = File(...)):
             "detected": True,
             "cx": cx,
             "cy": cy,
+            "w": w,
+            "h": h,
             "theta": theta,
             "confidence": best_conf
         })

@@ -1,29 +1,107 @@
-# 체커보드 인식 개선 계획 (Plan)
+# Plan: vision_pick 실행 위치 재구성 (제어 PC 직접 실행)
 
-## 1. 실제 체커보드 규격 확인 (Human-in-the-loop 완료)
-* [x] 사용자에게 현재 사용 중인 체커보드의 **가로/세로 사각형 칸 개수** 또는 **내부 교차점 코너 개수**를 확인받기. (사용자: "9*6개가 맞음")
-* [ ] 조명 상태나 출력된 종이 여백에 문제가 없는지 확인.
-
-## 2. `camera_calibration.py` 코드 수정
-* [x] `CHECKERBOARD` 변수를 스크립트 실행 인자로 받을 수 있도록 `argparse`에 `--board` 옵션 추가 (예: `--board 9x6` 또는 `--board 8x5`). 이를 통해 코드 내 하드코딩된 (9, 6)을 유연하게 변경할 수 있도록 조치.
-* [x] 인식 속도 및 안정성 향상을 위해 `cv2.findChessboardCorners` 플래그에 `cv2.CALIB_CB_FAST_CHECK` 추가 고려.
-
-## 3. `handeye_calibration.py` 동기화 (옵션)
-* [x] `camera_calibration.py`와 마찬가지로 Hand-Eye 캘리브레이션 코드에도 `--board` 옵션을 추가하여 일관성 유지.
-
-## 4. 검증 및 캘리브레이션 재수행
-* [x] 변경된 코드로 `stream_sender.py` 및 `camera_calibration.py` 재가동 완료.
-* [x] (V01 완료) RMS 0.21px 달성 및 `camera_info.yaml` 생성 완료.
-* [x] (V02 완료) 검증 오차 RMS 2.53mm 달성 및 `handeye_result.yaml` 생성 완료.
-
-## 5. 좌표 변환 파이프라인 검증 (TASK-V04)
-* [x] 트레이(Tray) 표면의 높이(`z_fixed`) 실측 및 `workspace_config.yaml` 입력 완료.
-* [x] (V04 완료) `coord_transform.py` 검증 스크립트를 통한 픽셀 → Base 3D 좌표 변환 수학 모델 검증 완료.
-
-## 6. 비전 픽앤플레이스 통합 (TASK-V05) 준비
-* [ ] 파지 각도 설정: `workspace_config.yaml`의 `grasp_rp` (roll, pitch) 값 입력.
-* [ ] YOLO OBB 서버 기동 확인 및 물체 인식 연동.
-* [ ] `vision_pick.py` 구동 테스트.
+## 목표
+`vision_pick.py`를 제어 PC에서 단독으로 실행 가능하게 만들고,
+메인 PC의 검출 서버(cv_detect_server.py)와 HTTP로 통신하는 구조를 완성한다.
 
 ---
-> **다음 단계**: 실제로 물건을 집어들 때 사용할 로봇 손목의 각도(`grasp_rp`의 roll, pitch)를 확인하여 입력해 주세요. (일반적으로 바닥을 수직으로 내려다보며 집을 경우 pitch: 0, roll: -90 근처입니다.)
+
+## 최종 역할 분담
+
+| 구분 | 메인 PC (192.168.1.11) | 제어 PC (192.168.1.114, 젯슨) |
+|---|---|---|
+| **실행 파일** | `cv_detect_server.py` | `vision_pick.py` |
+| **역할** | OpenCV 상자 검출 서버 | 카메라 촬영 → 검출 요청 → 로봇 제어 |
+| **입출력** | 이미지 수신 → (cx,cy,theta) 반환 | 검출 결과 수신 → 좌표 변환 → 로봇 이동 |
+| **하드웨어** | 없음 (순수 연산) | 카메라 + 로봇 serial |
+
+---
+
+## PHASE 1: 상대 임포트 문제 해결
+
+### 1-1. vision_pick.py 수정
+- 파일 상단에 `sys.path` 동적 조정 코드를 추가하여 **상대 임포트 없이도 실행 가능**하게 변경
+- `.` 상대 임포트를 절대 임포트로 교체
+
+**변경 대상 임포트 (4줄):**
+```python
+# Before (상대 임포트 - 단독 실행 불가)
+from .coord_transform    import get_object_coords_in_base, load_workspace_config
+from .obb_detect_client  import detect_object
+from .remote_capture     import RemoteCapture
+from .handeye_calibration import RemoteRobot
+
+# After (절대 임포트 - 단독 실행 가능)
+import sys, os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..', '..'))
+from src.devices.jetcobot.vision.coord_transform    import get_object_coords_in_base, load_workspace_config
+from src.devices.jetcobot.vision.obb_detect_client  import detect_object
+from src.devices.jetcobot.vision.remote_capture     import RemoteCapture
+from src.devices.jetcobot.vision.handeye_calibration import RemoteRobot
+```
+
+### 1-2. 동일 패턴 파일들도 함께 수정
+`coord_transform.py`도 단독 실행 시 `from .handeye_calibration import RemoteRobot` 때문에 실패함. 동일한 방식으로 수정.
+
+---
+
+## PHASE 2: 기본 서버 URL 변경
+
+### 2-1. vision_pick.py 기본값 수정
+```python
+# Before
+server_url: str = "http://localhost:8081/detect"
+
+# After
+server_url: str = "http://192.168.1.11:8081/detect"  # 메인 PC IP
+```
+
+---
+
+## PHASE 3: 제어 PC 코드 동기화
+
+### 3-1. 제어 PC에서 git pull
+```bash
+# 제어 PC 터미널에서
+cd ~/roscamp-repo-1
+git pull
+```
+
+---
+
+## 실행 가이드 (최종)
+
+### 메인 PC 터미널 (1개)
+```bash
+python3 src/devices/jetcobot/vision/cv_detect_server.py \
+  --hsv-lower 0 0 203 --hsv-upper 179 37 255 --port 8081
+```
+
+### 제어 PC 터미널 (1개)
+```bash
+cd ~/roscamp-repo-1
+python3 src/devices/jetcobot/vision/vision_pick.py \
+  --location tray --trials 1
+```
+> 서버 URL 기본값이 `http://192.168.1.11:8081`이므로 별도 인자 불필요
+
+---
+
+## 변경 범위 요약
+
+| 파일 | 변경 내용 |
+|---|---|
+| `vision_pick.py` | 상대 임포트 → 절대 임포트 + sys.path 추가, 기본 server_url 변경 |
+| `coord_transform.py` | 상대 임포트 → 절대 임포트 + sys.path 추가 |
+| `cv_detect_server.py` | 변경 없음 |
+| `obb_detect_client.py` | 변경 없음 |
+
+---
+
+## 체크리스트
+- [x] `vision_pick.py` 임포트 수정
+- [x] `coord_transform.py` 임포트 수정
+- [x] 기본 server_url 메인 PC IP로 변경 (192.168.1.11:8081)
+- [ ] 제어 PC에서 git pull
+- [ ] 제어 PC에서 단독 실행 테스트
+- [ ] 실제 픽업 동작 검증

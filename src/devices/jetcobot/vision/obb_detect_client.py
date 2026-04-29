@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-YOLO OBB 상자 검출 HTTP 클라이언트  (TASK-V03-B)
-================================================
-GPU 서버의 obb_server.py (포트 8080) 로 이미지를 POST 하고
-검출 결과 (cx, cy, theta) 를 반환한다.
+OBB (Oriented Bounding Box) 검출 API 클라이언트
+=============================================
+FastAPI 기반 OBB 서버(YOLO 또는 OpenCV)에 이미지를 보내
+검출 결과(cx, cy, w, h, theta)를 받아오는 범용 클라이언트 모듈입니다.
 
 단독 테스트:
-    python yolo_detect_client.py [--device /dev/jetcocam0]
+    python3 src/devices/jetcobot/vision/obb_detect_client.py [--device /dev/jetcocam0]
 """
 
 import argparse
@@ -19,12 +19,13 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.
 
 import cv2
 import numpy as np
+import time
 import requests
 
 from src.devices.jetcobot.vision.remote_capture import RemoteCapture
 # ── 기본 설정 ─────────────────────────────────────────────────────────────────
 GPU_SERVER_URL  = os.environ.get(
-    "OBB_SERVER_URL", "http://192.168.1.120:8080/detect"
+    "OBB_SERVER_URL", "http://localhost:8080/detect"
 )
 CAMERA_DEVICE   = "/dev/jetcocam0"
 REQUEST_TIMEOUT = 3.0       # 초
@@ -86,23 +87,47 @@ def _run_live_test(device: str, server_url: str, use_remote: bool = False) -> No
             elapsed_ms = (time.time() - t0) * 1000.0
 
             if result["detected"]:
-                cx = int(result["cx"])
-                cy = int(result["cy"])
-                theta = result["theta"]
-                conf  = result["confidence"]
+                # 서버에서 detections 리스트를 가져옴 (없으면 단일 결과로 리스트 생성)
+                detections = result.get("detections", [])
+                if not detections and "cx" in result:
+                    detections = [{
+                        "cx": result["cx"], "cy": result["cy"],
+                        "w": result.get("w",0), "h": result.get("h",0),
+                        "theta": result["theta"], "confidence": result["confidence"],
+                        "id": 0
+                    }]
 
-                # 중심점 표시
-                cv2.circle(display, (cx, cy), 6, (0, 255, 0), -1)
+                for det in detections:
+                    cx = int(det["cx"])
+                    cy = int(det["cy"])
+                    w  = float(det.get("w", 0))
+                    h  = float(det.get("h", 0))
+                    theta = det["theta"]
+                    conf  = det["confidence"]
+                    idx   = det.get("id", 0)
 
-                # OBB 장축 방향 화살표
-                length = 40
-                ex = int(cx + length * np.cos(theta))
-                ey = int(cy + length * np.sin(theta))
-                cv2.arrowedLine(display, (cx, cy), (ex, ey), (0, 255, 0), 2)
+                    # ── OBB 4개 꼭짓점 계산 ──────────────────────
+                    cos_t, sin_t = np.cos(theta), np.sin(theta)
+                    hw, hh = w / 2, h / 2
+                    corners_local = np.array([[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]], dtype=np.float32)
+                    rot = np.array([[cos_t, -sin_t], [sin_t, cos_t]])
+                    corners = (corners_local @ rot.T + np.array([cx, cy])).astype(np.int32)
 
-                info = f"cx={cx} cy={cy} theta={np.degrees(theta):.1f}deg conf={conf:.2f}"
-                cv2.putText(display, info, (10, 30),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                    # OBB 윤곽선 (초록색)
+                    cv2.polylines(display, [corners], isClosed=True, color=(0, 255, 0), thickness=2)
+
+                    # 중심점 (노란색 십자선)
+                    cv2.circle(display, (cx, cy), 5, (0, 255, 255), -1)
+                    
+                    # 박스 구분 번호 표시 (상단에 Box #N)
+                    label = f"Box #{idx}"
+                    cv2.putText(display, label, (cx - 20, cy - int(h/2) - 10),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
+
+                # 전체 정보 텍스트 (첫 번째 상자 기준 요약)
+                count = len(detections)
+                cv2.putText(display, f"Detected: {count} boxes", (10, 30),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
             else:
                 cv2.putText(display, "NO OBJECT", (10, 30),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)

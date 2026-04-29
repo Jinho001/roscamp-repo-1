@@ -14,13 +14,24 @@ YOLO OBB 결과 (cx, cy, theta) → robot base 3D 좌표 변환
 
 import argparse
 import os
+import sys
 import time
 
 import cv2
 import numpy as np
 import yaml
 from pymycobot import MyCobot280
-from .handeye_calibration import RemoteRobot
+
+# 단독 실행 및 패키지 실행 모두 지원
+_VISION_DIR = os.path.dirname(os.path.abspath(__file__))
+_ROOT_DIR   = os.path.abspath(os.path.join(_VISION_DIR, "..", "..", "..", ".."))
+if _ROOT_DIR not in sys.path:
+    sys.path.insert(0, _ROOT_DIR)
+
+try:
+    from src.devices.jetcobot.vision.handeye_calibration import RemoteRobot
+except ImportError:
+    from .handeye_calibration import RemoteRobot
 
 
 # ── 기본 경로 ─────────────────────────────────────────────────────────────────
