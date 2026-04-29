@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-YOLO OBB 상자 검출 HTTP 서버  (TASK-V03-A)
+Jinho YOLO OBB 상자 검출 HTTP 서버 (임시)
 ==========================================
 GPU 서버에서 실행. FastAPI + uvicorn.
 
@@ -127,7 +127,8 @@ async def detect(image: UploadFile = File(...)):
     results = model(img, verbose=False)
     elapsed_ms = (time.time() - t0) * 1000.0
 
-    result_dict = _extract_best_obb(results[0], CONF_THRESHOLD)
+    # config에서 threshold를 가져오는 대신 전역 변수나 인자를 사용할 수 있게 수정 가능
+    result_dict = _extract_best_obb(results[0], 0.5) 
     result_dict["process_ms"] = round(elapsed_ms, 2)
 
     return JSONResponse(content=result_dict)
@@ -155,21 +156,12 @@ def main():
     )
     args = parser.parse_args()
 
-    DEFAULT_MODEL  = args.model
-    CONF_THRESHOLD = args.conf
-    DEFAULT_PORT   = args.port
+    print(f"[INFO] 모델 로딩: {args.model}")
+    model = YOLO(args.model)
+    print(f"[INFO] OBB 서버 시작 — 포트 {args.port}")
+    print(f"[INFO] 신뢰도 임계값: {args.conf}")
 
-    if not os.path.exists(DEFAULT_MODEL):
-        print(f"[ERROR] 모델 파일 미존재: {DEFAULT_MODEL}")
-        print("  YOLOv8n-obb 파인튜닝 완료 후 경로를 지정하세요.")
-        sys.exit(1)
-
-    print(f"[INFO] 모델 로딩: {DEFAULT_MODEL}")
-    model = YOLO(DEFAULT_MODEL)
-    print(f"[INFO] OBB 서버 시작 — 포트 {DEFAULT_PORT}")
-    print(f"[INFO] 신뢰도 임계값: {CONF_THRESHOLD}")
-
-    uvicorn.run(app, host="0.0.0.0", port=DEFAULT_PORT)
+    uvicorn.run(app, host="0.0.0.0", port=args.port)
 
 
 if __name__ == "__main__":

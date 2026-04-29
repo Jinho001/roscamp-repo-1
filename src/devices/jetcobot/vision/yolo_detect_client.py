@@ -12,13 +12,16 @@ GPU 서버의 obb_server.py (포트 8080) 로 이미지를 POST 하고
 import argparse
 import os
 import sys
-import time
+import os
+
+# src 폴더를 찾을 수 있도록 프로젝트 루트 경로를 sys.path에 추가
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../..")))
 
 import cv2
 import numpy as np
 import requests
 
-
+from src.devices.jetcobot.vision.remote_capture import RemoteCapture
 # ── 기본 설정 ─────────────────────────────────────────────────────────────────
 GPU_SERVER_URL  = os.environ.get(
     "OBB_SERVER_URL", "http://192.168.1.120:8080/detect"
@@ -29,28 +32,13 @@ JPEG_QUALITY    = 90        # POST 이미지 품질
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def detect_object(frame: np.ndarray, timeout: float = REQUEST_TIMEOUT) -> dict:
+def detect_object(frame: np.ndarray, timeout: float = REQUEST_TIMEOUT, server_url: str = None) -> dict:
     """
     카메라 프레임을 GPU 서버로 전송해 OBB 검출 결과를 반환한다.
-
-    Parameters
-    ----------
-    frame   : np.ndarray  — BGR 이미지 (cv2.imread / cap.read 결과)
-    timeout : float       — HTTP 요청 타임아웃 (초)
-
-    Returns
-    -------
-    dict with keys:
-        detected   : bool
-        cx         : float  — 픽셀 좌표 (미검출 시 0.0)
-        cy         : float
-        theta      : float  — OBB 장축 각도 (rad, 미검출 시 0.0)
-        confidence : float  — 신뢰도 (미검출 시 0.0)
-
-    Raises
-    ------
-    requests.RequestException : 서버 통신 오류
     """
+    if server_url is None:
+        server_url = GPU_SERVER_URL
+        
     ok, buf = cv2.imencode(
         ".jpg", frame,
         [int(cv2.IMWRITE_JPEG_QUALITY), JPEG_QUALITY],
@@ -59,7 +47,7 @@ def detect_object(frame: np.ndarray, timeout: float = REQUEST_TIMEOUT) -> dict:
         raise RuntimeError("JPEG 인코딩 실패")
 
     resp = requests.post(
-        GPU_SERVER_URL,
+        server_url,
         files={"image": ("frame.jpg", buf.tobytes(), "image/jpeg")},
         timeout=timeout,
     )
@@ -69,14 +57,19 @@ def detect_object(frame: np.ndarray, timeout: float = REQUEST_TIMEOUT) -> dict:
 
 # ── 단독 테스트 ───────────────────────────────────────────────────────────────
 
-def _run_live_test(device: str) -> None:
+def _run_live_test(device: str, server_url: str, use_remote: bool = False) -> None:
     """카메라 영상을 실시간으로 서버에 전송해 검출 결과를 화면에 표시"""
-    cap = cv2.VideoCapture(device)
-    if not cap.isOpened():
-        print(f"[ERROR] 카메라 열기 실패: {device}")
-        sys.exit(1)
+    if use_remote:
+        print("[INFO] 원격 영상 수신 중 (포트 5000)...")
+        cap = RemoteCapture(port=5000)
+        time.sleep(0.5)
+    else:
+        cap = cv2.VideoCapture(device)
+        if not cap.isOpened():
+            print(f"[ERROR] 카메라 열기 실패: {device}")
+            sys.exit(1)
 
-    print(f"[INFO] OBB 서버: {GPU_SERVER_URL}")
+    print(f"[INFO] OBB 서버: {server_url}")
     print(f"[INFO] 카메라  : {device}")
     print("  'q' 로 종료")
 
@@ -89,7 +82,7 @@ def _run_live_test(device: str) -> None:
 
         try:
             t0 = time.time()
-            result = detect_object(frame)
+            result = detect_object(frame, server_url=server_url)
             elapsed_ms = (time.time() - t0) * 1000.0
 
             if result["detected"]:
@@ -142,12 +135,14 @@ def main():
         default=GPU_SERVER_URL,
         help=f"OBB HTTP 서버 URL (기본: {GPU_SERVER_URL})",
     )
+    parser.add_argument(
+        "--remote",
+        action="store_true",
+        help="원격 영상 수신(RemoteCapture) 사용 여부",
+    )
     args = parser.parse_args()
 
-    global GPU_SERVER_URL
-    GPU_SERVER_URL = args.server
-
-    _run_live_test(args.device)
+    _run_live_test(args.device, args.server, args.remote)
 
 
 if __name__ == "__main__":

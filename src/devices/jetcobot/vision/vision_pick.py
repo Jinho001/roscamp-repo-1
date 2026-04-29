@@ -21,6 +21,7 @@ from pymycobot import MyCobot280
 from .coord_transform    import get_object_coords_in_base, load_workspace_config
 from .yolo_detect_client import detect_object
 from .remote_capture     import RemoteCapture
+from .handeye_calibration import RemoteRobot
 
 
 # ── 기본 설정 ─────────────────────────────────────────────────────────────────
@@ -40,7 +41,7 @@ DEFAULT_CFG = os.path.join(_HERE, "..", "config", "front_jet")
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _wait_move(mc: MyCobot280, timeout: float = 30.0) -> None:
+def _wait_move(mc, timeout: float = 30.0) -> None:
     """is_moving() 폴링으로 이동 완료 대기. timeout 초 초과 시 강제 진행."""
     deadline = time.time() + timeout
     while True:
@@ -74,7 +75,7 @@ def capture_frame(device: str = CAMERA_DEVICE, use_remote: bool = False) -> np.n
 
 
 def vision_pick(
-    mc: MyCobot280,
+    mc,
     location: str = "tray",
     config_dir: str = DEFAULT_CFG,
     camera_device: str = CAMERA_DEVICE,
@@ -144,25 +145,28 @@ def vision_pick(
     x, y, z = P_base
     roll  = cfg["grasp_rp"]["roll"]
     pitch = cfg["grasp_rp"]["pitch"]
+    yaw_offset = cfg["grasp_rp"].get("yaw_offset", 0.0)
 
     if roll is None or pitch is None:
         return False, "grasp_rp.roll/pitch 미설정 — workspace_config.yaml 확인"
+    
+    final_yaw = yaw_deg + yaw_offset
 
     print(f"[VISION_PICK] base 좌표: x={x:.1f} y={y:.1f} z={z:.1f} "
-          f"roll={roll} pitch={pitch} yaw={yaw_deg:.1f} (mm, deg)")
+          f"roll={roll} pitch={pitch} yaw={yaw_deg:.1f} (offset 적용 후 RZ: {final_yaw:.1f}deg)")
 
     # ── 4. 픽업 모션 ──────────────────────────────────────────────────────────
     pre_z = z + PRE_PICK_OFFSET
 
     # 4-a. pre-pick 고도 이동
     print("[VISION_PICK] pre-pick 이동...")
-    mc.send_coords([x, y, pre_z, roll, pitch, yaw_deg], MOVE_SPEED, 0)
+    mc.send_coords([x, y, pre_z, roll, pitch, final_yaw], MOVE_SPEED, 0)
     _wait_move(mc)
     time.sleep(SETTLE_TIME)
 
     # 4-b. 픽업 위치로 하강
     print("[VISION_PICK] 픽업 위치 하강...")
-    mc.send_coords([x, y, z, roll, pitch, yaw_deg], DESCENT_SPEED, 0)
+    mc.send_coords([x, y, z, roll, pitch, final_yaw], DESCENT_SPEED, 0)
     _wait_move(mc)
     time.sleep(0.5)
 
@@ -173,7 +177,7 @@ def vision_pick(
 
     # 4-d. pre-pick 고도로 복귀
     print("[VISION_PICK] 상승 복귀...")
-    mc.send_coords([x, y, pre_z, roll, pitch, yaw_deg], MOVE_SPEED, 0)
+    mc.send_coords([x, y, pre_z, roll, pitch, final_yaw], MOVE_SPEED, 0)
     _wait_move(mc)
     time.sleep(SETTLE_TIME)
 
@@ -183,7 +187,7 @@ def vision_pick(
 
 
 def vision_place(
-    mc: MyCobot280,
+    mc,
     target_coords: list,
 ) -> tuple[bool, str]:
     """
@@ -237,9 +241,14 @@ def vision_place(
 # 단독 테스트
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _run_test(robot_port: str, location: str, config_dir: str, n: int = 3, use_remote: bool = False) -> None:
+def _run_test(robot_port: str, location: str, config_dir: str, n: int = 3, use_remote: bool = False, robot_host: str = "") -> None:
     """픽업 n 회 연속 테스트 (place 좌표는 workspace_config 에서 자동 로드)."""
-    mc = MyCobot280(robot_port, ROBOT_BAUD)
+    if robot_host:
+        print(f"[INFO] 원격 로봇 서버에 연결 중: {robot_host}:5001")
+        mc = RemoteRobot(robot_host, 5001)
+    else:
+        print(f"[INFO] 로봇 연결 중: {robot_port} @ {ROBOT_BAUD}")
+        mc = MyCobot280(robot_port, ROBOT_BAUD)
     time.sleep(0.5)
 
     cfg = load_workspace_config(config_dir)
@@ -273,9 +282,10 @@ def main():
     parser.add_argument("--config-dir", default=DEFAULT_CFG)
     parser.add_argument("--trials",     type=int, default=3)
     parser.add_argument("--remote",     action="store_true", help="원격 영상 수신")
+    parser.add_argument("--robot-host", default="", help="로봇 제어 PC IP (원격 제어용)")
     args = parser.parse_args()
 
-    _run_test(args.port, args.location, args.config_dir, args.trials, args.remote)
+    _run_test(args.port, args.location, args.config_dir, args.trials, args.remote, args.robot_host)
 
 
 if __name__ == "__main__":

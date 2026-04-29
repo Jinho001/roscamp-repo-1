@@ -20,6 +20,7 @@ import cv2
 import numpy as np
 import yaml
 from pymycobot import MyCobot280
+from .handeye_calibration import RemoteRobot
 
 
 # ── 기본 경로 ─────────────────────────────────────────────────────────────────
@@ -142,7 +143,7 @@ def theta_cam_to_robot(theta_cam: float, T_base2cam: np.ndarray) -> float:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def get_object_coords_in_base(
-    mc: MyCobot280,
+    mc,
     cx: float,
     cy: float,
     theta: float,
@@ -169,26 +170,16 @@ def get_object_coords_in_base(
     K, D     = load_camera_info(config_dir)
     T_ee2cam = load_handeye(config_dir)
 
-    # 1. Z 고정값 로드 (mm)
+    # 1. Z 고정값 로드 (m)
     z_fixed_mm = cfg["locations"][location]["z_fixed"]
     if z_fixed_mm is None:
         raise ValueError(
             f"workspace_config.yaml: locations.{location}.z_fixed 가 null 입니다. "
             "실측 후 값을 채우세요."
         )
+    Z_base_target = z_fixed_mm / 1000.0
 
-    # 핀홀 역산은 m 단위로 수행 (T_ee2cam 이 m 단위이므로)
-    Z_m = z_fixed_mm / 1000.0
-
-    # 2. 핀홀 역산 — 카메라 좌표계 (m)
-    fx, fy   = K[0, 0], K[1, 1]
-    ppx, ppy = K[0, 2], K[1, 2]
-
-    X_cam = (cx - ppx) * Z_m / fx
-    Y_cam = (cy - ppy) * Z_m / fy
-    P_cam = np.array([X_cam, Y_cam, Z_m, 1.0])
-
-    # 3. 현재 EE pose → T_base2cam
+    # 2. 현재 EE pose → T_base2cam 계산
     coords = mc.get_coords()
     if not coords or len(coords) != 6:
         raise RuntimeError("mc.get_coords() 실패 — 로봇 연결 상태를 확인하세요.")
@@ -196,12 +187,36 @@ def get_object_coords_in_base(
     T_base2ee  = coords_to_homogeneous(coords)
     T_base2cam = T_base2ee @ T_ee2cam
 
-    # 4. base 좌표 (m → mm)
-    P_base_m = T_base2cam @ P_cam
-    P_base   = P_base_m[:3] * 1000.0   # m → mm
+    # 3. 픽셀 좌표를 카메라 좌표계의 방향 벡터(Ray)로 변환
+    fx, fy   = K[0, 0], K[1, 1]
+    ppx, ppy = K[0, 2], K[1, 2]
+    
+    ray_cam = np.array([
+        (cx - ppx) / fx,
+        (cy - ppy) / fy,
+        1.0
+    ])
 
-    # 5. yaw 변환
+    # 4. 방향 벡터를 Base 좌표계로 회전 변환
+    R_base2cam = T_base2cam[:3, :3]
+    t_base2cam = T_base2cam[:3, 3]
+    ray_base = R_base2cam @ ray_cam
+
+    # 5. Base 좌표계에서 Z = Z_base_target 평면과의 교점 계산 (Ray-Plane Intersection)
+    if abs(ray_base[2]) < 1e-6:
+        raise RuntimeError("카메라가 바닥과 수평을 바라보고 있어 교차점을 계산할 수 없습니다.")
+    
+    t = (Z_base_target - t_base2cam[2]) / ray_base[2]
+    P_base_m = t_base2cam + t * ray_base
+    P_base = P_base_m * 1000.0   # m → mm
+
+    # 6. yaw 변환
     yaw_deg = theta_cam_to_robot(theta, T_base2cam)
+
+    # 7. TCP 오프셋 보정 (플랜지 vs 그리퍼 중심 간의 물리적 차이)
+    # workspace_config.yaml에서 값을 읽어와 로봇 이동 목표 좌표(P_base)에 더해줌
+    tcp_offset = cfg.get("grasp_rp", {}).get("tcp_offset", [0.0, 0.0, 0.0])
+    P_base += np.array(tcp_offset)
 
     return P_base, yaw_deg
 
@@ -210,7 +225,7 @@ def get_object_coords_in_base(
 # 단독 검증 테스트
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _run_verify(robot_port: str, config_dir: str, n_trials: int = 5) -> None:
+def _run_verify(robot_port: str, config_dir: str, n_trials: int = 5, robot_host: str = "") -> None:
     """
     알려진 위치의 상자를 n_trials 회 측정해 평균 오차를 출력한다.
     실행 전: workspace_config.yaml 의 z_fixed 를 실측 입력 완료 상태여야 함.
@@ -221,7 +236,12 @@ def _run_verify(robot_port: str, config_dir: str, n_trials: int = 5) -> None:
     print(f"[VERIFY] {n_trials}회 좌표 측정 테스트")
     print("  z_fixed 와 T_ee2cam 이 올바르게 설정됐는지 확인합니다.")
 
-    mc = MyCobot280(robot_port, 1_000_000)
+    if robot_host:
+        print(f"[INFO] 원격 로봇 서버에 연결 중: {robot_host}:5001")
+        mc = RemoteRobot(robot_host, 5001)
+    else:
+        print(f"[INFO] 로봇 연결 중: {robot_port} @ 1000000")
+        mc = MyCobot280(robot_port, 1_000_000)
     time.sleep(0.5)
 
     cfg = load_workspace_config(config_dir)
@@ -263,9 +283,10 @@ def main():
     parser.add_argument("--port",       default="/dev/ttyJETCOBOT")
     parser.add_argument("--config-dir", default=DEFAULT_CFG)
     parser.add_argument("--trials",     type=int, default=5)
+    parser.add_argument("--robot-host", default="", help="로봇 제어 PC IP (원격 좌표 수신)")
     args = parser.parse_args()
 
-    _run_verify(args.port, args.config_dir, args.trials)
+    _run_verify(args.port, args.config_dir, args.trials, args.robot_host)
 
 
 if __name__ == "__main__":

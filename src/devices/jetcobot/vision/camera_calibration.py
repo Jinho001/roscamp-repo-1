@@ -27,7 +27,7 @@ from .remote_capture import RemoteCapture
 
 # ── 기본 설정 ─────────────────────────────────────────────────────────────────
 CHECKERBOARD   = (9, 6)        # 내부 코너 수 (반드시 홀수×짝수)
-SQUARE_SIZE_MM = 25.0          # ← 인쇄된 체커보드 정사각형 한 변 실측값 (mm) 수정 필요
+SQUARE_SIZE_MM = 19.0          # ← 인쇄된 체커보드 정사각형 한 변 실측값 (mm) 수정 필요
 CAMERA_DEVICE  = "/dev/jetcocam0"
 MIN_IMAGES     = 20
 RMS_THRESHOLD  = 0.5           # px
@@ -44,12 +44,12 @@ SUBPIX_CRITERIA = (
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _build_object_points() -> np.ndarray:
+def _build_object_points(square_mm: float) -> np.ndarray:
     """3D 체커보드 코너 좌표 (Z=0 평면, mm 단위)"""
     objp = np.zeros((CHECKERBOARD[0] * CHECKERBOARD[1], 3), dtype=np.float32)
     objp[:, :2] = np.mgrid[
         0:CHECKERBOARD[0], 0:CHECKERBOARD[1]
-    ].T.reshape(-1, 2) * SQUARE_SIZE_MM
+    ].T.reshape(-1, 2) * square_mm
     return objp
 
 
@@ -65,7 +65,7 @@ def detect_corners(frame_gray: np.ndarray):
     ret, corners = cv2.findChessboardCorners(
         frame_gray,
         CHECKERBOARD,
-        cv2.CALIB_CB_ADAPTIVE_THRESH + cv2.CALIB_CB_NORMALIZE_IMAGE,
+        cv2.CALIB_CB_ADAPTIVE_THRESH + cv2.CALIB_CB_NORMALIZE_IMAGE + cv2.CALIB_CB_FAST_CHECK,
     )
     if not ret:
         return None
@@ -147,7 +147,7 @@ def save_camera_info(
     print(f"[SAVE] camera_info.yaml → {os.path.abspath(path)}")
 
 
-def run(device: str, output_path: str, use_remote: bool = False) -> None:
+def run(device: str, output_path: str, use_remote: bool = False, square_mm: float = 25.0) -> None:
     """메인 인터랙티브 캘리브레이션 루프"""
     if use_remote:
         print(f"[INFO] 원격 카메라 수신 대기 중 (Port: 5000)...")
@@ -159,14 +159,14 @@ def run(device: str, output_path: str, use_remote: bool = False) -> None:
         print(f"[ERROR] 카메라 열기 실패: {device}")
         sys.exit(1)
 
-    objp = _build_object_points()
+    objp = _build_object_points(square_mm)
     obj_points_list: list[np.ndarray] = []
     img_points_list: list[np.ndarray] = []
     img_size = None
 
     print("=" * 60)
     print("  카메라 Intrinsic 캘리브레이션")
-    print(f"  체커보드: {CHECKERBOARD[0]}×{CHECKERBOARD[1]}, 정사각형: {SQUARE_SIZE_MM} mm")
+    print(f"  체커보드: {CHECKERBOARD[0]}×{CHECKERBOARD[1]}, 정사각형: {square_mm} mm")
     print(f"  카메라  : {device}")
     print(f"  목표    : {MIN_IMAGES}장 이상 캡처 후 'c' 입력")
     print("=" * 60)
@@ -280,12 +280,19 @@ def main():
         "--remote", action="store_true",
         help="제어 PC로부터 네트워크 영상 수신"
     )
+    parser.add_argument(
+        "--board", default="9x6",
+        help="체커보드 내부 코너 수 가로x세로 (기본: 9x6)"
+    )
     args = parser.parse_args()
 
-    global SQUARE_SIZE_MM
-    SQUARE_SIZE_MM = args.square_mm
+    global CHECKERBOARD
+    if args.board:
+        parts = args.board.split("x")
+        if len(parts) == 2:
+            CHECKERBOARD = (int(parts[0]), int(parts[1]))
 
-    run(args.device, args.out, args.remote)
+    run(args.device, args.out, args.remote, args.square_mm)
 
 
 if __name__ == "__main__":

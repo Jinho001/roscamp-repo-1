@@ -9,18 +9,20 @@
 
 locations:
   tray:
-    z_fixed: null       # ← 트레이 표면 높이 실측 후 입력 (mm)
+    z_fixed: 95      # ← 쇼피 트레이 표면 높이 실측 후 입력 (mm)
   shelf_A1:
     z_fixed: null       # ← 선반 A1 표면 높이 실측 후 입력 (mm)
   shelf_A2:
     z_fixed: null       # ← 선반 A2 표면 높이 실측 후 입력 (mm)
 
 grasp_rp:
-  roll:  null           # ← 파지 roll  티칭 후 입력 (deg)
-  pitch: null           # ← 파지 pitch 티칭 후 입력 (deg)
+  roll: -161.81           # ← 파지 roll  티칭 후 입력 (deg)
+  pitch: 0.94             # ← 파지 pitch 티칭 후 입력 (deg)
+  yaw_offset: -90.0       # ← 그리퍼 방향 보정 각도 (필요 시 +90.0 등으로 변경)
+  tcp_offset: [0.0, 20.0, 0.0]  # ← 플랜지 vs 그리퍼 중심 오프셋 [x, y, z] (mm)
 
 observe_pose:
-  tray:     null        # ← [x, y, z, rx, ry, rz] 티칭 후 입력
+  tray: [-62.4, -87.9, 314.2, -161.81, 0.94, -179.37] # 쇼피 트레이를 바라보는 자세 ← [x, y, z, rx, ry, rz] 티칭 후 입력
   shelf_A1: null
   shelf_A2: null
 

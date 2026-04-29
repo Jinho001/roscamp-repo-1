@@ -19,7 +19,11 @@ def main():
     parser.add_argument("--height", type=int, default=480)
     args = parser.parse_args()
 
-    cap = cv2.VideoCapture(args.device)
+    cap = cv2.VideoCapture(args.device, cv2.CAP_V4L2)
+    if not cap.isOpened():
+        print(f"[ERROR] 카메라를 열 수 없습니다: {args.device}")
+        return
+
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, args.width)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, args.height)
 
@@ -33,8 +37,8 @@ def main():
             ret, frame = cap.read()
             if not ret: continue
 
-            # JPEG 압축
-            _, img_encoded = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+            # JPEG 압축 (품질을 50으로 낮춰 UDP 64KB 제한 초과로 인한 프레임 드랍/멈춤 방지)
+            _, img_encoded = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 50])
             data = img_encoded.tobytes()
 
             # UDP 패킷 크기 제한(64KB)을 위해 분할 전송이 필요할 수 있으나, 

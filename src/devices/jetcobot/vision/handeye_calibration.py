@@ -29,8 +29,42 @@ import time
 import cv2
 import numpy as np
 import yaml
+import json
+import socket
 from pymycobot import MyCobot280
 from .remote_capture import RemoteCapture
+
+class RemoteRobot:
+    def __init__(self, host: str, port: int = 5001):
+        self.host = host
+        self.port = port
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.sock.settimeout(2.0)
+        
+    def _send_cmd(self, cmd, *args):
+        payload = json.dumps({"cmd": cmd, "args": args})
+        try:
+            self.sock.sendto(payload.encode('utf-8'), (self.host, self.port))
+            data, _ = self.sock.recvfrom(1024)
+            return json.loads(data.decode('utf-8'))
+        except Exception as e:
+            print(f"[ERROR] 원격 로봇 응답 없음 ({cmd}): {e}")
+            return None
+
+    def get_coords(self) -> list:
+        res = self._send_cmd('get_coords')
+        return res if res is not None else []
+        
+    def send_coords(self, coords, speed, mode):
+        return self._send_cmd('send_coords', coords, speed, mode)
+        
+    def is_moving(self):
+        res = self._send_cmd('is_moving')
+        return res if res is not None else 0
+        
+    def set_gripper_value(self, value, speed):
+        return self._send_cmd('set_gripper_value', value, speed)
+
 
 
 # ── 기본 설정 ─────────────────────────────────────────────────────────────────
@@ -124,11 +158,11 @@ def make_4x4(R: np.ndarray, t: np.ndarray) -> np.ndarray:
 
 # ── 체커보드 검출 ─────────────────────────────────────────────────────────────
 
-def _build_board_points() -> np.ndarray:
+def _build_board_points(square_mm: float) -> np.ndarray:
     objp = np.zeros((CHECKERBOARD[0] * CHECKERBOARD[1], 3), dtype=np.float32)
     objp[:, :2] = np.mgrid[
         0:CHECKERBOARD[0], 0:CHECKERBOARD[1]
-    ].T.reshape(-1, 2) * SQUARE_SIZE_MM
+    ].T.reshape(-1, 2) * square_mm
     return objp
 
 
@@ -136,15 +170,16 @@ def detect_board_pose(
     frame_gray: np.ndarray,
     K: np.ndarray,
     D: np.ndarray,
+    square_mm: float,
 ) -> tuple[np.ndarray, np.ndarray] | tuple[None, None]:
     """
     체커보드 검출 + solvePnP → (rvec, tvec)
     실패 시 (None, None) 반환
     """
-    objp = _build_board_points()
+    objp = _build_board_points(square_mm)
     ret, corners = cv2.findChessboardCorners(
         frame_gray, CHECKERBOARD,
-        cv2.CALIB_CB_ADAPTIVE_THRESH + cv2.CALIB_CB_NORMALIZE_IMAGE,
+        cv2.CALIB_CB_ADAPTIVE_THRESH + cv2.CALIB_CB_NORMALIZE_IMAGE + cv2.CALIB_CB_FAST_CHECK,
     )
     if not ret:
         return None, None
@@ -208,11 +243,12 @@ def save_result(T_ee2cam: np.ndarray, rms_verify_mm: float | None, path: str) ->
 # ── 검증 ──────────────────────────────────────────────────────────────────────
 
 def verify_reprojection(
-    mc: MyCobot280,
+    mc,
     cap: cv2.VideoCapture,
     T_ee2cam: np.ndarray,
     K: np.ndarray,
     D: np.ndarray,
+    square_mm: float,
     n_poses: int = 3,
 ) -> float:
     """
@@ -235,7 +271,7 @@ def verify_reprojection(
             continue
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        rvec, tvec = detect_board_pose(gray, K, D)
+        rvec, tvec = detect_board_pose(gray, K, D, square_mm)
 
         display = frame.copy()
         status_color = (0, 255, 0) if rvec is not None else (0, 0, 255)
@@ -292,7 +328,7 @@ def verify_reprojection(
 
 # ── 메인 루프 ─────────────────────────────────────────────────────────────────
 
-def run(device: str, robot_port: str, output_path: str, use_remote: bool = False) -> None:
+def run(device: str, robot_port: str, output_path: str, use_remote: bool = False, square_mm: float = 25.0, robot_host: str = "") -> None:
     # 카메라 intrinsic 로드 (V01 산출물)
     cam_info_path = os.path.abspath(_CAMERA_INFO_PATH)
     if not os.path.exists(cam_info_path):
@@ -314,10 +350,16 @@ def run(device: str, robot_port: str, output_path: str, use_remote: bool = False
         sys.exit(1)
 
     # 로봇 연결
-    print(f"[INFO] 로봇 연결 중: {robot_port} @ {ROBOT_BAUD}")
-    mc = MyCobot280(robot_port, ROBOT_BAUD)
-    time.sleep(0.5)
-    print("[INFO] 로봇 연결 완료")
+    if robot_host:
+        print(f"[INFO] 원격 로봇 서버에 연결 중: {robot_host}:5001")
+        mc = RemoteRobot(robot_host, 5001)
+        time.sleep(0.5)
+        print("[INFO] 원격 로봇 준비 완료")
+    else:
+        print(f"[INFO] 로봇 연결 중: {robot_port} @ {ROBOT_BAUD}")
+        mc = MyCobot280(robot_port, ROBOT_BAUD)
+        time.sleep(0.5)
+        print("[INFO] 로봇 연결 완료")
 
     # 수집 버퍼
     R_base2ee_list:   list[np.ndarray] = []
@@ -330,7 +372,7 @@ def run(device: str, robot_port: str, output_path: str, use_remote: bool = False
 
     print("=" * 60)
     print("  Hand-Eye 캘리브레이션  (TASK-V02)")
-    print(f"  체커보드: {CHECKERBOARD[0]}×{CHECKERBOARD[1]}, {SQUARE_SIZE_MM} mm")
+    print(f"  체커보드: {CHECKERBOARD[0]}×{CHECKERBOARD[1]}, {square_mm} mm")
     print(f"  목표    : {MIN_POSES}자세 이상 수집 후 'c' 입력")
     print("=" * 60)
     print("  [스페이스] 자세 수집  [c] 캘리브레이션  [v] 검증  [r] 초기화  [q] 종료")
@@ -341,11 +383,11 @@ def run(device: str, robot_port: str, output_path: str, use_remote: bool = False
             continue
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        rvec, tvec = detect_board_pose(gray, K, D)
+        rvec, tvec = detect_board_pose(gray, K, D, square_mm)
 
         display = frame.copy()
         if rvec is not None:
-            cv2.drawFrameAxes(display, K, D, rvec, tvec, SQUARE_SIZE_MM * 2)
+            cv2.drawFrameAxes(display, K, D, rvec, tvec, square_mm * 2)
             cv2.putText(display, "BOARD DETECTED", (10, 30),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
         else:
@@ -404,11 +446,10 @@ def run(device: str, robot_port: str, output_path: str, use_remote: bool = False
                 save_result(T_ee2cam, rms_verify, output_path)
 
         # ── 'v': 검증 모드 ────────────────────────────────────────────────
-        elif key == ord("v"):
             if T_ee2cam is None:
                 print("[WARN] 캘리브레이션 먼저 실행하세요 ('c').")
             else:
-                rms_verify = verify_reprojection(mc, cap, T_ee2cam, K, D)
+                rms_verify = verify_reprojection(mc, cap, T_ee2cam, K, D, square_mm)
                 save_result(T_ee2cam, rms_verify, output_path)
 
         # ── 'r': 초기화 ───────────────────────────────────────────────────
@@ -438,12 +479,17 @@ def main():
     parser.add_argument("--out",       default=DEFAULT_OUT)
     parser.add_argument("--square-mm", type=float, default=SQUARE_SIZE_MM)
     parser.add_argument("--remote",    action="store_true", help="원격 영상 수신")
+    parser.add_argument("--board",     default="9x6", help="체커보드 내부 코너 수 가로x세로")
+    parser.add_argument("--robot-host", default="", help="로봇 제어 PC IP (원격 좌표 수신)")
     args = parser.parse_args()
 
-    global SQUARE_SIZE_MM
-    SQUARE_SIZE_MM = args.square_mm
+    global CHECKERBOARD
+    if args.board:
+        parts = args.board.split("x")
+        if len(parts) == 2:
+            CHECKERBOARD = (int(parts[0]), int(parts[1]))
 
-    run(args.device, args.port, args.out, args.remote)
+    run(args.device, args.port, args.out, args.remote, args.square_mm, args.robot_host)
 
 
 if __name__ == "__main__":
