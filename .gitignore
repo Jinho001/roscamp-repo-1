@@ -158,6 +158,10 @@ node_modules/
 install/
 log/
 
+# Project artifacts (local only)
+tasks/
+docs/
+
 # IDE
 .vscode/
 .idea/

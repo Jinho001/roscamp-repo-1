@@ -1,0 +1,16 @@
+# ── Goal ──────────────────────────────────────────────────────────────────────
+# 픽업할 위치 이름 (workspace_config.yaml 키와 일치)
+# 예: "tray", "shelf_A1"
+string location
+
+---
+# ── Result ────────────────────────────────────────────────────────────────────
+bool success
+string message
+geometry_msgs/Point pick_point_base  # 픽업 완료 좌표 (base_link 프레임, 단위: m)
+
+---
+# ── Feedback ──────────────────────────────────────────────────────────────────
+# phase: "moving" | "detecting" | "transforming" | "picking" | "done"
+string  phase
+float32 progress  # 0.0 ~ 1.0

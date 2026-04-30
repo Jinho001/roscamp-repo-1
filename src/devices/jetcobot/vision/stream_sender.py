@@ -34,17 +34,34 @@ def main():
 
     try:
         while True:
+            if not cap.isOpened():
+                print("[WARN] 카메라가 닫혀있습니다. 재연결 시도...")
+                time.sleep(1.0)
+                cap = cv2.VideoCapture(args.device, cv2.CAP_V4L2)
+                cap.set(cv2.CAP_PROP_FRAME_WIDTH, args.width)
+                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, args.height)
+                continue
+
             ret, frame = cap.read()
-            if not ret: continue
+            if not ret:
+                print("[WARN] 프레임 획득 실패. (케이블 확인 필요)")
+                time.sleep(0.5)  # CPU 100% 방지
+                # 3번 이상 실패 시 재연결을 위해 닫기
+                cap.release()
+                continue
 
-            # JPEG 압축 (품질을 50으로 낮춰 UDP 64KB 제한 초과로 인한 프레임 드랍/멈춤 방지)
-            _, img_encoded = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 50])
-            data = img_encoded.tobytes()
+            # JPEG 압축 (품질을 동적으로 낮춰 UDP 64KB 제한 초과 방지)
+            quality = 50
+            while True:
+                _, img_encoded = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), quality])
+                data = img_encoded.tobytes()
+                
+                if len(data) <= 65000 or quality <= 10:
+                    break
+                quality -= 10  # 용량이 크면 화질을 더 낮춤
 
-            # UDP 패킷 크기 제한(64KB)을 위해 분할 전송이 필요할 수 있으나, 
-            # 640x480 JPEG는 보통 64KB 미만이므로 단순화하여 전송합니다.
             if len(data) > 65000:
-                print("[WARN] 프레임 크기 초과")
+                print(f"[WARN] 프레임 크기 초과 ({len(data)} bytes) - 전송 포기")
                 continue
 
             sock.sendto(data, dest)

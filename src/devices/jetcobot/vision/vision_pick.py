@@ -68,6 +68,19 @@ def _wait_move(mc, timeout: float = 30.0) -> None:
         time.sleep(0.1)
 
 
+def _step_wait(step_mode: bool, message: str) -> bool:
+    """
+    step_mode=True일 때 사용자 입력을 기다린다.
+    'q' 입력 시 False 반환 (중단 신호), 그 외 True 반환.
+    """
+    if not step_mode:
+        return True
+    print(f"\n{'─'*50}")
+    val = input(f"[STEP] {message}\n       Enter = 진행 / q+Enter = 중단 > ").strip().lower()
+    print(f"{'─'*50}")
+    return val != "q"
+
+
 def capture_frame(device: str = CAMERA_DEVICE, use_remote: bool = False) -> np.ndarray | None:
     """
     카메라에서 단일 프레임을 캡처해 반환한다.
@@ -93,7 +106,9 @@ def vision_pick(
     config_dir: str = DEFAULT_CFG,
     camera_device: str = CAMERA_DEVICE,
     use_remote: bool = False,
-    server_url: str = "http://192.168.1.11:8081/detect",  # 메인 PC 기본 IP
+    server_url: str = "http://192.168.1.4:8081/detect",  # 메인 PC 기본 IP
+    step_mode: bool = False,                              # 단계별 키 대기 모드
+    live_mode: bool = False,                              # 실시간 스트림 데이터 사용 여부
 ) -> tuple[bool, str]:
     """
     비전 픽업 1사이클. (OpenCV 고전 비전 서버 연동 버전)
@@ -105,20 +120,29 @@ def vision_pick(
     if obs_pose is None:
         return False, f"observe_pose.{location} 미설정 — workspace_config.yaml 확인"
 
+    if not _step_wait(step_mode, f"[1/4] 관측 자세로 이동합니다. (목표: {obs_pose})"):
+        return False, "사용자 중단 (Step 1)"
+
     print(f"[VISION_PICK] {location} 관측 자세 이동...")
     mc.send_coords(obs_pose, MOVE_SPEED, 0)
     _wait_move(mc)
     time.sleep(SETTLE_TIME)
 
     # ── 2. 촬영 + 검출 ────────────────────────────────────────────────────────
-    print("[VISION_PICK] 프레임 캡처...")
-    frame = capture_frame(camera_device, use_remote)
-    if frame is None:
-        return False, f"카메라 캡처 실패: {camera_device}"
+    if not _step_wait(step_mode, "[2/4] 객체를 검출합니다."):
+        return False, "사용자 중단 (Step 2)"
 
     try:
-        # 8081 포트의 고전 비전 서버를 기본으로 사용
-        result = detect_object(frame, server_url=server_url)
+        if live_mode:
+            from src.devices.jetcobot.vision.obb_detect_client import get_latest_result
+            print("[VISION_PICK] 서버 실시간 데이터(/latest) 가져오는 중...")
+            result = get_latest_result(server_url=server_url)
+        else:
+            print("[VISION_PICK] 프레임 캡처 및 전송 중...")
+            frame = capture_frame(camera_device, use_remote)
+            if frame is None:
+                return False, f"카메라 캡처 실패: {camera_device}"
+            result = detect_object(frame, server_url=server_url)
     except Exception as e:
         return False, f"검출 서버 오류: {e}"
 
@@ -150,11 +174,25 @@ def vision_pick(
     
     final_yaw = yaw_deg + yaw_offset
 
-    print(f"[VISION_PICK] base 좌표: x={x:.1f} y={y:.1f} z={z:.1f} "
-          f"roll={roll} pitch={pitch} yaw={yaw_deg:.1f} (offset 적용 후 RZ: {final_yaw:.1f}deg)")
+    # Yaw 범위 정규화 (-180 ~ 180)
+    # 상자는 180도 대칭이므로 180단위로 조절해도 파지 방향은 동일함
+    while final_yaw > 180:
+        final_yaw -= 180
+    while final_yaw <= -180:
+        final_yaw += 180
+
+    print(f"\n[VISION_PICK] 베이스 좌표:")
+    print(f"  x={x:.1f}  y={y:.1f}  z={z:.1f}")
+    print(f"  roll={roll}  pitch={pitch}  yaw={yaw_deg:.1f}deg")
+    print(f"  (yaw_offset={yaw_offset:.1f} 적용 후 RZ: {final_yaw:.1f}deg)")
 
     # ── 4. 픽업 모션 ──────────────────────────────────────────────────────────
     pre_z = z + PRE_PICK_OFFSET
+
+    if not _step_wait(step_mode,
+                      f"[3/4] 위 좌표로 픽업을 진행합니다.\n       "
+                      f"pre-pick 고도: z={pre_z:.1f} → 픽업: z={z:.1f}"):
+        return False, "사용자 중단 (Step 3)"
 
     # 4-a. pre-pick 고도 이동
     print("[VISION_PICK] pre-pick 이동...")
@@ -167,6 +205,12 @@ def vision_pick(
     mc.send_coords([x, y, z, roll, pitch, final_yaw], DESCENT_SPEED, 0)
     _wait_move(mc)
     time.sleep(0.5)
+
+    if not _step_wait(step_mode, "[4/4] 그리퍼를 닫아 파지합니다."):
+        # 중단 시 pre-pick 고도로 복귀 후 종료
+        mc.send_coords([x, y, pre_z, roll, pitch, final_yaw], MOVE_SPEED, 0)
+        _wait_move(mc)
+        return False, "사용자 중단 (Step 4 — 그리퍼 미동작, 복귀 완료)"
 
     # 4-c. 그리퍼 닫기 (파지)
     print("[VISION_PICK] 그리퍼 닫기 (파지)...")
@@ -239,7 +283,17 @@ def vision_place(
 # 단독 테스트
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _run_test(robot_port: str, location: str, config_dir: str, n: int = 3, use_remote: bool = False, robot_host: str = "", server_url: str = "http://localhost:8081/detect") -> None:
+def _run_test(
+    robot_port: str,
+    location: str,
+    config_dir: str,
+    n: int = 3,
+    use_remote: bool = False,
+    robot_host: str = "",
+    server_url: str = "http://localhost:8081/detect",
+    step_mode: bool = False,
+    live_mode: bool = False,
+) -> None:
     """픽업 n 회 연속 테스트 (place 좌표는 workspace_config 에서 자동 로드)."""
     if robot_host:
         print(f"[INFO] 원격 로봇 서버에 연결 중: {robot_host}:5001")
@@ -249,6 +303,9 @@ def _run_test(robot_port: str, location: str, config_dir: str, n: int = 3, use_r
         mc = MyCobot280(robot_port, ROBOT_BAUD)
     time.sleep(0.5)
 
+    if step_mode:
+        print("[INFO] *** 단계별 모드 활성화 — 각 단계마다 Enter로 진행합니다 ***")
+
     cfg = load_workspace_config(config_dir)
 
     success_count = 0
@@ -256,7 +313,13 @@ def _run_test(robot_port: str, location: str, config_dir: str, n: int = 3, use_r
         print(f"\n{'='*50}")
         print(f"  시도 {i+1}/{n}  (location={location})")
         print(f"{'='*50}")
-        ok, msg = vision_pick(mc, location, config_dir, use_remote=use_remote, server_url=server_url)
+        ok, msg = vision_pick(
+            mc, location, config_dir,
+            use_remote=use_remote,
+            server_url=server_url,
+            step_mode=step_mode,
+            live_mode=live_mode,
+        )
         if ok:
             success_count += 1
             # 선반 place 좌표가 config 에 있다면 자동 실행
@@ -282,9 +345,15 @@ def main():
     parser.add_argument("--remote",     action="store_true", help="원격 영상 수신")
     parser.add_argument("--robot-host", default="", help="로봇 제어 PC IP (원격 제어용)")
     parser.add_argument("--server-url", default="http://localhost:8081/detect", help="검출 서버 URL")
+    parser.add_argument("--step",       action="store_true", help="단계별 키보드 대기 모드")
+    parser.add_argument("--live",       action="store_true", help="서버의 실시간 데이터(/latest) 사용")
     args = parser.parse_args()
 
-    _run_test(args.port, args.location, args.config_dir, args.trials, args.remote, args.robot_host, args.server_url)
+    _run_test(
+        args.port, args.location, args.config_dir,
+        args.trials, args.remote, args.robot_host,
+        args.server_url, args.step, args.live,
+    )
 
 
 if __name__ == "__main__":
