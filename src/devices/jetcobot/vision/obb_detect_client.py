@@ -56,6 +56,27 @@ def detect_object(frame: np.ndarray, timeout: float = REQUEST_TIMEOUT, server_ur
     return resp.json()
 
 
+def get_latest_result(server_url: str = None, timeout: float = REQUEST_TIMEOUT) -> dict:
+    """
+    서버가 이미 처리 중인 가장 최신 검출 결과(/latest)를 가져온다.
+    제어 PC에서 직접 촬영하지 않을 때 사용.
+    """
+    if server_url is None:
+        server_url = GPU_SERVER_URL
+    
+    # /detect -> /latest 로 경로 변경
+    base_url = server_url.rsplit('/', 1)[0]
+    latest_url = f"{base_url}/latest"
+    
+    try:
+        resp = requests.get(latest_url, timeout=timeout)
+        resp.raise_for_status()
+        return resp.json()
+    except Exception as e:
+        print(f"[ERROR] 실시간 데이터 획득 실패: {e}")
+        return {"detected": False, "detections": []}
+
+
 # ── 단독 테스트 ───────────────────────────────────────────────────────────────
 
 def _run_live_test(device: str, server_url: str, use_remote: bool = False) -> None:
