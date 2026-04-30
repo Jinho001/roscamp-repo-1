@@ -1,0 +1,65 @@
+# vision_params.yaml
+# ==================
+# 노드 이름과 launch 파일의 name= 이 반드시 일치해야 합니다.
+# 단위: mm (거리), deg (각도), m (ROS 내부 전달 시 자동 변환)
+
+vision_detector_node:
+  ros__parameters:
+    udp_host:       "0.0.0.0"
+    udp_port:       7007           # jetcam.py AI_SERVER_PORT 와 동일
+    robot_id:       5              # jetcam.py ROBOT_ID 와 동일
+    model_path:     "yolov8n-obb-box.pt"
+    conf_threshold: 0.5
+    publish_hz:     10.0
+
+coord_transform_node:
+  ros__parameters:
+    # handeye_result.yaml T_ee2cam (row-major 4×4)
+    handeye_matrix:
+      - 0.9955181180385095
+      - -0.09236211587032309
+      - -0.02032033978606575
+      - 0.0004237468556380977
+      - 0.09215089442325214
+      - 0.9956832022377156
+      - -0.011098352969840833
+      - -0.07245503146972071
+      - 0.021257688351718585
+      - 0.009176073975592695
+      - 0.9997319192425216
+      - 0.04859228254585788
+      - 0.0
+      - 0.0
+      - 0.0
+      - 1.0
+    # camera_info.yaml [fx, fy, cx, cy] (pixels)
+    camera_intrinsics:
+      - 1000.4208004615881
+      - 999.3603949999673
+      - 253.87976012235055
+      - 242.88307511826676
+    # workspace_config.yaml observe_pose["tray"] [x mm, y mm, z mm, rx deg, ry deg, rz deg]
+    observe_pose:
+      - -62.4
+      - -87.9
+      - 314.2
+      - -161.81
+      - 0.94
+      - -179.37
+    z_surface_mm: 95.0             # workspace_config.yaml locations.tray.z_fixed
+    obb_topic:    "/vision_detector/obb_boxes"
+
+vision_pick_node:
+  ros__parameters:
+    port:               "/dev/ttyJETCOBOT"
+    baud:               1000000
+    grasp_roll:         -178.81    # workspace_config.yaml grasp_rp.roll
+    grasp_pitch:        0.94       # workspace_config.yaml grasp_rp.pitch
+    grasp_yaw_offset:   0.0        # workspace_config.yaml grasp_rp.yaw_offset
+    tcp_offset:                    # workspace_config.yaml grasp_rp.tcp_offset
+      - 0.0
+      - 20.0
+      - 100.0
+    pick_z_offset_mm:   20.0       # 파지 전 접근 높이 마진
+    detect_timeout_sec: 10.0
+    coord_topic:        "/coord_transform/pick_point_base"
