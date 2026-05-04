@@ -184,20 +184,22 @@ class CoordTransformNode(Node):
         )
 
     def _pixel_to_base(self, px: float, py: float) -> np.ndarray | None:
-        """픽셀 (px, py) → base_link 3D 좌표 (m). Ray-Plane 교점."""
-        ray_c    = self._K_inv @ np.array([px, py, 1.0], dtype=np.float64)
-        T_c2b    = np.linalg.inv(self._T_base2cam)
-        origin_b = T_c2b[:3, 3]
-        ray_b    = T_c2b[:3, :3] @ ray_c
+        """픽셀 (px, py) → base_link 3D 좌표 (m). Ray-Plane 교점.
+        레거시 coord_transform.py와 동일한 방식: R_base2cam @ ray_cam 직접 사용.
+        """
+        ray_c  = self._K_inv @ np.array([px, py, 1.0], dtype=np.float64)
+        R      = self._T_base2cam[:3, :3]
+        t_orig = self._T_base2cam[:3, 3]
+        ray_b  = R @ ray_c
 
         if abs(ray_b[2]) < 1e-9:
             self.get_logger().warn("ray_b.z ≈ 0: 작업면과 평행 — 변환 건너뜀")
             return None
-        t_param = (self._z_surface_m - origin_b[2]) / ray_b[2]
+        t_param = (self._z_surface_m - t_orig[2]) / ray_b[2]
         if t_param < 0.0:
             self.get_logger().warn("교점이 카메라 뒤쪽 — 변환 건너뜀")
             return None
-        return origin_b + t_param * ray_b
+        return t_orig + t_param * ray_b
 
 
 def main(args=None) -> None:
