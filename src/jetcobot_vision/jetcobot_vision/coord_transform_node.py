@@ -120,7 +120,7 @@ class CoordTransformNode(Node):
         ))
 
         self._static_br = StaticTransformBroadcaster(self)
-        self._broadcast_tf(T_base2cam)
+        self._broadcast_tf(self._T_base2cam)
         self.get_logger().info("Static TF 브로드캐스트: base_link → camera_link")
 
         self._tf_buffer   = tf2_ros.Buffer()
