@@ -14,11 +14,14 @@ Phase 5 "done"         : Result 반환
 Action  /vision_pick  [jetcobot_vision_msgs/action/VisionPick]
 """
 
+import os
 import time
 import threading
 from typing import Optional
 
 import requests
+import yaml
+from ament_index_python.packages import get_package_share_directory
 import rclpy
 from rclpy.action import ActionServer, CancelResponse, GoalResponse
 from rclpy.callback_groups import ReentrantCallbackGroup
@@ -41,61 +44,17 @@ _GRIPPER_OPEN  = 100
 _GRIPPER_CLOSE = 0
 _MAX_MOVE_WAIT = 30.0
 
-# location별 파라미터 프로파일
-# observe_pose : [x mm, y mm, z mm, rx deg, ry deg, rz deg]
-# fixed_coords : 비전 없이 티칭 좌표로 직접 이동 (observe_pose 대신 사용)
-# grasp_roll/pitch/yaw_offset : 파지 자세 (미설정 시 yaml 전역값 사용)
-# pick_z_offset_mm : 접근 높이 오프셋 (미설정 시 yaml 전역값 사용)
-_PROFILES: dict[str, dict] = {
-    # ── Pick 프로파일 ──────────────────────────────────────────────────────
-    "tray": {                               # 핑키 적재함 상자 픽업
-        "observe_pose":     [-62.4, -87.9, 314.2, -161.81, 0.94, -179.37],
-        "z_surface_mm":     95.0,
-        "hsv_lower":        [0, 0, 208],
-        "hsv_upper":        [158, 30, 255],
-        "min_w": 110, "max_w": 200,
-        "min_h": 110, "max_h": 200,
-        "grasp_roll":       -178.81,
-        "grasp_pitch":      0.94,
-        "grasp_yaw_offset": 0.0,
-        "pick_z_offset_mm": 20.0,
-    },
-    "receiving_zone": {                     # 회수존 상자 픽업 (실측 후 수정)
-        "observe_pose":     [-62.4, -87.9, 314.2, -161.81, 0.94, -179.37],
-        "z_surface_mm":     95.0,
-        "hsv_lower":        [0, 0, 208],
-        "hsv_upper":        [158, 30, 255],
-        "min_w": 110, "max_w": 200,
-        "min_h": 110, "max_h": 200,
-        "grasp_roll":       -178.81,
-        "grasp_pitch":      0.94,
-        "grasp_yaw_offset": 0.0,
-        "pick_z_offset_mm": 20.0,
-    },
-    "warehouse_pick": {                     # 창고 고정 위치 픽업 (비전 없음, 티칭 좌표)
-        "fixed_coords":     None,           # TODO: 실측 후 [x, y, z, rx, ry, rz] 입력
-        "grasp_roll":       -178.81,
-        "grasp_pitch":      0.94,
-        "grasp_yaw_offset": 0.0,
-        "pick_z_offset_mm": 20.0,
-    },
-    # ── Place 프로파일 ─────────────────────────────────────────────────────
-    "pinky_tray_place": {                   # 핑키 적재함 place (ArUco 마커 인식)
-        "observe_pose":     None,           # TODO: 실측 후 입력
-        "z_surface_mm":     None,           # TODO: 실측 후 입력
-        "grasp_roll":       -178.81,        # TODO: place 자세 실측 후 수정
-        "grasp_pitch":      0.94,
-        "grasp_yaw_offset": 0.0,
-        "pick_z_offset_mm": 20.0,
-    },
-    "warehouse_place": {                    # 창고 고정 위치 place (비전 없음, 티칭 좌표)
-        "fixed_coords":     None,           # TODO: 실측 후 [x, y, z, rx, ry, rz] 입력
-        "grasp_roll":       -178.81,        # TODO: place 자세 실측 후 수정
-        "grasp_pitch":      0.94,
-        "grasp_yaw_offset": 0.0,
-        "pick_z_offset_mm": 20.0,
-    },
-}
+def _load_profiles() -> dict:
+    """pick_place_profiles.yaml을 로드. 패키지 share 경로 우선, 없으면 소스 경로 사용."""
+    try:
+        pkg_dir = get_package_share_directory("jetcobot_vision")
+        path = os.path.join(pkg_dir, "config", "pick_place_profiles.yaml")
+    except Exception:
+        path = os.path.join(os.path.dirname(__file__), "..", "config", "pick_place_profiles.yaml")
+    with open(path) as f:
+        return yaml.safe_load(f)
+
+_PROFILES: dict[str, dict] = _load_profiles()
 
 
 class VisionPickNode(Node):
