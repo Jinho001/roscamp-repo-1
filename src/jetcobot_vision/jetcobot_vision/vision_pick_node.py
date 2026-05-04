@@ -40,6 +40,27 @@ _GRIPPER_OPEN  = 100
 _GRIPPER_CLOSE = 0
 _MAX_MOVE_WAIT = 30.0
 
+# location별 파라미터 프로파일
+# observe_pose: [x mm, y mm, z mm, rx deg, ry deg, rz deg]
+_PROFILES: dict[str, dict] = {
+    "tray": {
+        "observe_pose": [-62.4, -87.9, 314.2, -161.81, 0.94, -179.37],
+        "z_surface_mm": 95.0,
+        "hsv_lower":    [0, 0, 208],
+        "hsv_upper":    [158, 30, 255],
+        "min_w": 110, "max_w": 200,
+        "min_h": 110, "max_h": 200,
+    },
+    "receiving_zone": {
+        "observe_pose": [-62.4, -87.9, 314.2, -161.81, 0.94, -179.37],  # 실측 후 수정
+        "z_surface_mm": 95.0,
+        "hsv_lower":    [0, 0, 208],
+        "hsv_upper":    [158, 30, 255],
+        "min_w": 110, "max_w": 200,
+        "min_h": 110, "max_h": 200,
+    },
+}
+
 
 class VisionPickNode(Node):
 
@@ -139,28 +160,8 @@ class VisionPickNode(Node):
     # ── 헬퍼: location 프로파일 로드 ─────────────────────────────────────────
 
     def _load_profile(self, location: str) -> Optional[dict]:
-        """vision_params.yaml의 profiles.{location} 섹션을 파라미터에서 로드."""
-        keys = [
-            ("observe_pose", None),
-            ("z_surface_mm", None),
-            ("hsv_lower",    None),
-            ("hsv_upper",    None),
-            ("min_w",        None),
-            ("max_w",        None),
-            ("min_h",        None),
-            ("max_h",        None),
-        ]
-        profile = {}
-        for key, _ in keys:
-            param_name = f"profiles.{location}.{key}"
-            try:
-                self.declare_parameter(param_name, rclpy.Parameter.Type.NOT_SET)
-            except Exception:
-                pass
-            p = self.get_parameter(param_name)
-            if p.type_ != rclpy.Parameter.Type.NOT_SET:
-                profile[key] = p.value
-        return profile if profile else None
+        """location에 해당하는 파라미터 프로파일 반환."""
+        return _PROFILES.get(location)
 
     # ── 콜백 ─────────────────────────────────────────────────────────────────
 
