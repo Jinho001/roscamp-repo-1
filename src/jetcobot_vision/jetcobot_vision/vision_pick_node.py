@@ -42,23 +42,58 @@ _GRIPPER_CLOSE = 0
 _MAX_MOVE_WAIT = 30.0
 
 # location별 파라미터 프로파일
-# observe_pose: [x mm, y mm, z mm, rx deg, ry deg, rz deg]
+# observe_pose : [x mm, y mm, z mm, rx deg, ry deg, rz deg]
+# fixed_coords : 비전 없이 티칭 좌표로 직접 이동 (observe_pose 대신 사용)
+# grasp_roll/pitch/yaw_offset : 파지 자세 (미설정 시 yaml 전역값 사용)
+# pick_z_offset_mm : 접근 높이 오프셋 (미설정 시 yaml 전역값 사용)
 _PROFILES: dict[str, dict] = {
-    "tray": {
-        "observe_pose": [-62.4, -87.9, 314.2, -161.81, 0.94, -179.37],
-        "z_surface_mm": 95.0,
-        "hsv_lower":    [0, 0, 208],
-        "hsv_upper":    [158, 30, 255],
+    # ── Pick 프로파일 ──────────────────────────────────────────────────────
+    "tray": {                               # 핑키 적재함 상자 픽업
+        "observe_pose":     [-62.4, -87.9, 314.2, -161.81, 0.94, -179.37],
+        "z_surface_mm":     95.0,
+        "hsv_lower":        [0, 0, 208],
+        "hsv_upper":        [158, 30, 255],
         "min_w": 110, "max_w": 200,
         "min_h": 110, "max_h": 200,
+        "grasp_roll":       -178.81,
+        "grasp_pitch":      0.94,
+        "grasp_yaw_offset": 0.0,
+        "pick_z_offset_mm": 20.0,
     },
-    "receiving_zone": {
-        "observe_pose": [-62.4, -87.9, 314.2, -161.81, 0.94, -179.37],  # 실측 후 수정
-        "z_surface_mm": 95.0,
-        "hsv_lower":    [0, 0, 208],
-        "hsv_upper":    [158, 30, 255],
+    "receiving_zone": {                     # 회수존 상자 픽업 (실측 후 수정)
+        "observe_pose":     [-62.4, -87.9, 314.2, -161.81, 0.94, -179.37],
+        "z_surface_mm":     95.0,
+        "hsv_lower":        [0, 0, 208],
+        "hsv_upper":        [158, 30, 255],
         "min_w": 110, "max_w": 200,
         "min_h": 110, "max_h": 200,
+        "grasp_roll":       -178.81,
+        "grasp_pitch":      0.94,
+        "grasp_yaw_offset": 0.0,
+        "pick_z_offset_mm": 20.0,
+    },
+    "warehouse_pick": {                     # 창고 고정 위치 픽업 (비전 없음, 티칭 좌표)
+        "fixed_coords":     None,           # TODO: 실측 후 [x, y, z, rx, ry, rz] 입력
+        "grasp_roll":       -178.81,
+        "grasp_pitch":      0.94,
+        "grasp_yaw_offset": 0.0,
+        "pick_z_offset_mm": 20.0,
+    },
+    # ── Place 프로파일 ─────────────────────────────────────────────────────
+    "pinky_tray_place": {                   # 핑키 적재함 place (ArUco 마커 인식)
+        "observe_pose":     None,           # TODO: 실측 후 입력
+        "z_surface_mm":     None,           # TODO: 실측 후 입력
+        "grasp_roll":       -178.81,        # TODO: place 자세 실측 후 수정
+        "grasp_pitch":      0.94,
+        "grasp_yaw_offset": 0.0,
+        "pick_z_offset_mm": 20.0,
+    },
+    "warehouse_place": {                    # 창고 고정 위치 place (비전 없음, 티칭 좌표)
+        "fixed_coords":     None,           # TODO: 실측 후 [x, y, z, rx, ry, rz] 입력
+        "grasp_roll":       -178.81,        # TODO: place 자세 실측 후 수정
+        "grasp_pitch":      0.94,
+        "grasp_yaw_offset": 0.0,
+        "pick_z_offset_mm": 20.0,
     },
 }
 
@@ -260,7 +295,7 @@ class VisionPickNode(Node):
 
         # Phase 4: picking
         self._fb(goal_handle, fb, "picking", 0.70)
-        if not self._do_pick(x_mm, y_mm, z_mm, yaw_deg):
+        if not self._do_pick(x_mm, y_mm, z_mm, yaw_deg, profile):
             return self._abort(goal_handle, res, "픽업 동작 실패")
 
         # Phase 5: done
@@ -314,10 +349,16 @@ class VisionPickNode(Node):
         self.get_logger().warn(f"검출 타임아웃 ({self._detect_timeout:.1f}s)")
         return None
 
-    def _do_pick(self, x_mm: float, y_mm: float, z_mm: float, yaw_deg: float) -> bool:
-        rx, ry, rz = self._grasp_roll, self._grasp_pitch, yaw_deg + self._grasp_yaw_off
+    def _do_pick(self, x_mm: float, y_mm: float, z_mm: float, yaw_deg: float,
+                profile: Optional[dict] = None) -> bool:
+        # 프로파일에 grasp 자세가 있으면 사용, 없으면 yaml 전역값 사용
+        roll       = profile.get("grasp_roll",       self._grasp_roll)    if profile else self._grasp_roll
+        pitch      = profile.get("grasp_pitch",      self._grasp_pitch)   if profile else self._grasp_pitch
+        yaw_offset = profile.get("grasp_yaw_offset", self._grasp_yaw_off) if profile else self._grasp_yaw_off
+        z_offset   = profile.get("pick_z_offset_mm", self._pick_z_off_mm) if profile else self._pick_z_off_mm
+        rx, ry, rz = roll, pitch, yaw_deg + yaw_offset
         ox, oy, oz = self._tcp_offset[0], self._tcp_offset[1], self._tcp_offset[2]
-        approach = [x_mm + ox, y_mm + oy, z_mm + oz + self._pick_z_off_mm, rx, ry, rz]
+        approach = [x_mm + ox, y_mm + oy, z_mm + oz + z_offset, rx, ry, rz]
         pick_pos = [x_mm + ox, y_mm + oy, z_mm + oz, rx, ry, rz]
         if self._mc is None:
             self.get_logger().info(f"[모의] 접근: {approach}  파지: {pick_pos}")
