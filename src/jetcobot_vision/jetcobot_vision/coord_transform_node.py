@@ -27,12 +27,13 @@ import math
 import numpy as np
 import rclpy
 from rclpy.node import Node
-from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy, QoSDurabilityPolicy
 from geometry_msgs.msg import TransformStamped, PointStamped
 from tf2_ros import StaticTransformBroadcaster
 import tf2_ros
 from std_msgs.msg import Header
+from std_srvs.srv import SetBool
 from jetcobot_vision_msgs.msg import ObbBoxArray
 
 
@@ -131,8 +132,12 @@ class CoordTransformNode(Node):
             durability=QoSDurabilityPolicy.VOLATILE,
             depth=1,
         )
-        _cb = MutuallyExclusiveCallbackGroup()
+        _cb = ReentrantCallbackGroup()
         self.create_subscription(ObbBoxArray, obb_topic, self._on_obb, sensor_qos, callback_group=_cb)
+
+        # 활성화 플래그 — vision_pick_node가 서비스로 제어
+        self._enabled = False
+        self.create_service(SetBool, "~/enable", self._on_enable_srv, callback_group=_cb)
 
         self.get_logger().info(f"CoordTransformNode 시작 완료  (z_surface={z_surf_mm} mm)")
 
@@ -152,8 +157,15 @@ class CoordTransformNode(Node):
         ts.transform.rotation.w = qw
         self._static_br.sendTransform(ts)
 
+    def _on_enable_srv(self, req: SetBool.Request, res: SetBool.Response) -> SetBool.Response:
+        self._enabled = req.data
+        res.success = True
+        res.message = f"enabled={self._enabled}"
+        self.get_logger().info(f"CoordTransform {'활성화' if self._enabled else '비활성화'}")
+        return res
+
     def _on_obb(self, msg: ObbBoxArray) -> None:
-        if not msg.boxes:
+        if not self._enabled or not msg.boxes:
             return
         best    = max(msg.boxes, key=lambda b: b.confidence)
         point_m = self._pixel_to_base(best.cx, best.cy)

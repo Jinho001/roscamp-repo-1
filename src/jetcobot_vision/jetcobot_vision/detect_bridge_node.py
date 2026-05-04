@@ -38,9 +38,10 @@ class DetectBridgeNode(Node):
         self.declare_parameter("poll_hz",         10.0)
         self.declare_parameter("request_timeout", 1.0)
 
-        self._server_url = self.get_parameter("server_url").value
-        self._timeout    = self.get_parameter("request_timeout").value
-        hz               = self.get_parameter("poll_hz").value
+        self._server_url      = self.get_parameter("server_url").value
+        self._timeout         = self.get_parameter("request_timeout").value
+        hz                    = self.get_parameter("poll_hz").value
+        self._last_timestamp: float = 0.0
 
         sensor_qos = QoSProfile(
             reliability=QoSReliabilityPolicy.BEST_EFFORT,
@@ -76,6 +77,11 @@ class DetectBridgeNode(Node):
             stamp=self.get_clock().now().to_msg(),
             frame_id="camera_link",
         )
+
+        ts = float(data.get("timestamp", 0.0))
+        if ts == self._last_timestamp:
+            return  # 동일 결과 중복 발행 스킵
+        self._last_timestamp = ts
 
         if data.get("detected") and data.get("detections"):
             for det in data["detections"]:

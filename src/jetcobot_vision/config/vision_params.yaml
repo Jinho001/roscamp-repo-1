@@ -46,15 +46,36 @@ coord_transform_node:
 
 vision_pick_node:
   ros__parameters:
-    port:               "/dev/ttyJETCOBOT"
-    baud:               1000000
-    grasp_roll:         -178.81
-    grasp_pitch:        0.94
-    grasp_yaw_offset:   0.0
+    port:                  "/dev/ttyJETCOBOT"
+    baud:                  1000000
+    grasp_roll:            -178.81
+    grasp_pitch:           0.94
+    grasp_yaw_offset:      0.0
     tcp_offset:
       - 0.0
       - 20.0
       - 100.0
-    pick_z_offset_mm:   20.0
-    detect_timeout_sec: 10.0
-    coord_topic:        "/coord_transform_node/pick_point_base"
+    pick_z_offset_mm:      20.0
+    detect_timeout_sec:    10.0
+    coord_topic:           "/coord_transform_node/pick_point_base"
+    cv_server_url:         "http://localhost:8081"
+    coord_enable_service:  "/coord_transform_node/enable"
+    # location별 파라미터 프로파일
+    # observe_pose: [x mm, y mm, z mm, rx deg, ry deg, rz deg]
+    profiles.tray.observe_pose:  [-62.4, -87.9, 314.2, -161.81, 0.94, -179.37]
+    profiles.tray.z_surface_mm:  95.0
+    profiles.tray.hsv_lower:     [0, 0, 208]
+    profiles.tray.hsv_upper:     [158, 30, 255]
+    profiles.tray.min_w:         110
+    profiles.tray.max_w:         200
+    profiles.tray.min_h:         110
+    profiles.tray.max_h:         200
+    # receiving_zone: 실측 후 입력
+    profiles.receiving_zone.observe_pose:  [-62.4, -87.9, 314.2, -161.81, 0.94, -179.37]
+    profiles.receiving_zone.z_surface_mm:  95.0
+    profiles.receiving_zone.hsv_lower:     [0, 0, 208]
+    profiles.receiving_zone.hsv_upper:     [158, 30, 255]
+    profiles.receiving_zone.min_w:         110
+    profiles.receiving_zone.max_w:         200
+    profiles.receiving_zone.min_h:         110
+    profiles.receiving_zone.max_h:         200
