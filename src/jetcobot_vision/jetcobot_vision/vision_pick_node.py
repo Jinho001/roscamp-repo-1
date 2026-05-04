@@ -78,7 +78,7 @@ class VisionPickNode(Node):
         self.declare_parameter("pick_z_offset_mm",     20.0)
         self.declare_parameter("detect_timeout_sec",   10.0)
         self.declare_parameter("coord_topic",          "/coord_transform_node/pick_point_base")
-        self.declare_parameter("cv_server_url",        "http://localhost:8081")
+        self.declare_parameter("cv_server_url",        "http://192.168.1.4:8081")
         self.declare_parameter("coord_enable_service", "/coord_transform_node/enable")
 
         port                      = self.get_parameter("port").value
@@ -87,6 +87,7 @@ class VisionPickNode(Node):
         self._grasp_pitch         = self.get_parameter("grasp_pitch").value
         self._grasp_yaw_off       = self.get_parameter("grasp_yaw_offset").value
         self._pick_z_off_mm       = self.get_parameter("pick_z_offset_mm").value
+        self._tcp_offset          = list(self.get_parameter("tcp_offset").value)
         self._detect_timeout      = self.get_parameter("detect_timeout_sec").value
         coord_topic               = self.get_parameter("coord_topic").value
         self._cv_server_url       = self.get_parameter("cv_server_url").value
@@ -287,8 +288,9 @@ class VisionPickNode(Node):
 
     def _do_pick(self, x_mm: float, y_mm: float, z_mm: float) -> bool:
         rx, ry, rz = self._grasp_roll, self._grasp_pitch, self._grasp_yaw_off
-        approach = [x_mm, y_mm, z_mm + self._pick_z_off_mm, rx, ry, rz]
-        pick_pos = [x_mm, y_mm, z_mm, rx, ry, rz]
+        ox, oy, oz = self._tcp_offset[0], self._tcp_offset[1], self._tcp_offset[2]
+        approach = [x_mm + ox, y_mm + oy, z_mm + oz + self._pick_z_off_mm, rx, ry, rz]
+        pick_pos = [x_mm + ox, y_mm + oy, z_mm + oz, rx, ry, rz]
         if self._mc is None:
             self.get_logger().info(f"[모의] 접근: {approach}  파지: {pick_pos}")
             time.sleep(1.0)
