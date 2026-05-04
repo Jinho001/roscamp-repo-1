@@ -37,18 +37,20 @@ from std_srvs.srv import SetBool
 from jetcobot_vision_msgs.msg import ObbBoxArray
 
 
-def _euler_deg_to_rotation(rx: float, ry: float, rz: float) -> np.ndarray:
-    """ZYX Intrinsic Euler (deg) → 3×3 rotation matrix."""
-    rx, ry, rz = math.radians(rx), math.radians(ry), math.radians(rz)
-    Rx = np.array([[1, 0, 0],
-                   [0,  math.cos(rx), -math.sin(rx)],
-                   [0,  math.sin(rx),  math.cos(rx)]])
-    Ry = np.array([[ math.cos(ry), 0, math.sin(ry)],
-                   [0,             1,             0],
-                   [-math.sin(ry), 0, math.cos(ry)]])
+def _euler_deg_to_rotation(rx_deg: float, ry_deg: float, rz_deg: float) -> np.ndarray:
+    """MyCobot280 get_coords() rx/ry/rz (deg) → 3×3 rotation matrix (ZYX extrinsic).
+    레거시 coord_transform.py의 euler_zyx_to_rotation과 동일한 구현.
+    """
+    rx, ry, rz = map(math.radians, [rx_deg, ry_deg, rz_deg])
     Rz = np.array([[math.cos(rz), -math.sin(rz), 0],
                    [math.sin(rz),  math.cos(rz), 0],
-                   [0,             0,            1]])
+                   [0,             0,             1]])
+    Ry = np.array([[ math.cos(ry), 0, math.sin(ry)],
+                   [0,             1, 0            ],
+                   [-math.sin(ry), 0, math.cos(ry)]])
+    Rx = np.array([[1, 0,            0           ],
+                   [0, math.cos(rx), -math.sin(rx)],
+                   [0, math.sin(rx),  math.cos(rx)]])
     return Rz @ Ry @ Rx
 
 
@@ -107,7 +109,7 @@ class CoordTransformNode(Node):
 
         T_ee2cam   = np.array(he_flat, dtype=np.float64).reshape(4, 4)
         t_ee       = np.array(obs_pose[:3], dtype=np.float64) / 1000.0
-        R_ee       = _euler_deg_to_rotation(obs_pose[3], obs_pose[4], obs_pose[5])
+        R_ee       = _euler_deg_to_rotation(obs_pose[3], obs_pose[4], obs_pose[5])  # rx, ry, rz
         T_base2ee  = _make_T(R_ee, t_ee)
         T_base2cam = T_base2ee @ T_ee2cam
         self._T_base2cam = T_base2cam
