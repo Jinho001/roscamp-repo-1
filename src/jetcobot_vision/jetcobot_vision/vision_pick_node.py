@@ -202,12 +202,27 @@ class VisionPickNode(Node):
         # Phase 1: moving
         self._fb(goal_handle, fb, "moving", 0.10)
 
-        # location 프로파일 로드 → cv_detect_server 파라미터 전송
+        # location 프로파일 로드
         profile = self._load_profile(location)
-        if profile:
-            self._send_cv_config(profile)
-        else:
-            self.get_logger().warn(f"프로파일 없음: '{location}' — 기본 파라미터 사용")
+        if profile is None:
+            return self._abort(goal_handle, res, f"알 수 없는 location: '{location}'")
+
+        # fixed_coords 프로파일 (비전 없음) 처리
+        if profile.get("observe_pose") is None:
+            fixed = profile.get("fixed_coords")
+            if not fixed:
+                return self._abort(goal_handle, res, f"observe_pose/fixed_coords 미설정: {location}")
+            self._fb(goal_handle, fb, "picking", 0.50)
+            if not self._do_pick_fixed(fixed, profile):
+                return self._abort(goal_handle, res, "fixed pick 동작 실패")
+            self._fb(goal_handle, fb, "done", 1.00)
+            res.success = True
+            res.message = f"location={location} pick 완료 (fixed)"
+            goal_handle.succeed()
+            return res
+
+        # 비전 기반 pick
+        self._send_cv_config(profile)
 
         # coord_transform 비활성화 (이동 중 잘못된 좌표 발행 방지)
         self._set_coord_transform(False)
@@ -346,6 +361,29 @@ class VisionPickNode(Node):
             time.sleep(0.1)
         else:
             self.get_logger().warn("이동 타임아웃 — 강제 진행")
+
+    def _do_pick_fixed(self, fixed_coords: list, profile: Optional[dict] = None) -> bool:
+        """비전 없이 티칭 좌표로 직접 pick."""
+        if self._mc is None:
+            self.get_logger().info(f"[모의] fixed pick: {fixed_coords}")
+            time.sleep(1.0)
+            return True
+        z_offset   = profile.get("pick_z_offset_mm", self._pick_z_off_mm) if profile else self._pick_z_off_mm
+        x, y, z    = fixed_coords[0], fixed_coords[1], fixed_coords[2]
+        rx, ry, rz = fixed_coords[3], fixed_coords[4], fixed_coords[5]
+        approach   = [x, y, z + z_offset, rx, ry, rz]
+        pick_pos   = [x, y, z, rx, ry, rz]
+        self._mc.set_gripper_value(_GRIPPER_OPEN, 50)
+        time.sleep(0.5)
+        self._mc.send_coords(approach, _PICK_SPEED, 0)
+        self._wait_move(settle=1.0)
+        self._mc.send_coords(pick_pos, _PICK_SPEED // 2, 0)
+        self._wait_move(settle=0.5)
+        self._mc.set_gripper_value(_GRIPPER_CLOSE, 50)
+        time.sleep(1.0)
+        self._mc.send_coords(approach, _PICK_SPEED, 0)
+        self._wait_move(settle=1.0)
+        return True
 
 
 def main(args=None) -> None:
