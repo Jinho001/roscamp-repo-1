@@ -42,7 +42,7 @@ coord_transform_node:
       - 0.94
       - -179.37
     z_surface_mm: 95.0
-    obb_topic:    "/detect_bridge/obb_boxes"
+    obb_topic:    "/detect_bridge_node/obb_boxes"
 
 vision_pick_node:
   ros__parameters:
@@ -57,4 +57,4 @@ vision_pick_node:
       - 100.0
     pick_z_offset_mm:   20.0
     detect_timeout_sec: 10.0
-    coord_topic:        "/coord_transform/pick_point_base"
+    coord_topic:        "/coord_transform_node/pick_point_base"

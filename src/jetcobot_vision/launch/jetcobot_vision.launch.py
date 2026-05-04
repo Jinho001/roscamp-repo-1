@@ -35,7 +35,7 @@ def generate_launch_description() -> LaunchDescription:
         Node(
             package="jetcobot_vision",
             executable="detect_bridge_node",
-            name="detect_bridge",
+            name="detect_bridge_node",
             parameters=[params],
             output="screen",
             emulate_tty=True,

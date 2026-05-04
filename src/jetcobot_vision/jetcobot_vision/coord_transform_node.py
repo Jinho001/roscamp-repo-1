@@ -28,6 +28,7 @@ import numpy as np
 import rclpy
 from rclpy.node import Node
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
+from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy, QoSDurabilityPolicy
 from geometry_msgs.msg import TransformStamped, PointStamped
 from tf2_ros import StaticTransformBroadcaster
 import tf2_ros
@@ -124,8 +125,14 @@ class CoordTransformNode(Node):
 
         self._pt_pub = self.create_publisher(PointStamped, "~/pick_point_base", 10)
 
+        sensor_qos = QoSProfile(
+            reliability=QoSReliabilityPolicy.BEST_EFFORT,
+            history=QoSHistoryPolicy.KEEP_LAST,
+            durability=QoSDurabilityPolicy.VOLATILE,
+            depth=1,
+        )
         _cb = MutuallyExclusiveCallbackGroup()
-        self.create_subscription(ObbBoxArray, obb_topic, self._on_obb, 10, callback_group=_cb)
+        self.create_subscription(ObbBoxArray, obb_topic, self._on_obb, sensor_qos, callback_group=_cb)
 
         self.get_logger().info(f"CoordTransformNode 시작 완료  (z_surface={z_surf_mm} mm)")
 
