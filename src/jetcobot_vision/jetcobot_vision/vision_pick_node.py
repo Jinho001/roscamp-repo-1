@@ -24,10 +24,10 @@ from rclpy.action import ActionServer, CancelResponse, GoalResponse
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
-from geometry_msgs.msg import PointStamped
 from std_srvs.srv import SetBool
 
 from jetcobot_vision_msgs.action import VisionPick
+from jetcobot_vision_msgs.msg import PickPoint
 
 try:
     from pymycobot import MyCobot280 as _MC280
@@ -99,6 +99,9 @@ class VisionPickNode(Node):
                 self._mc = _MC280(port, baud)
                 time.sleep(0.5)
                 self.get_logger().info("MyCobot 연결 완료")
+                self.get_logger().info("초기 자세로 이동: [0,0,0,0,0,0]")
+                self._mc.send_angles([0, 0, 0, 0, 0, 0], _PICK_SPEED)
+                time.sleep(2.0)
             except Exception as exc:
                 self._mc = None
                 self.get_logger().warn(f"MyCobot 연결 실패 — 모의 동작 모드: {exc}")
@@ -106,11 +109,12 @@ class VisionPickNode(Node):
             self._mc = None
             self.get_logger().warn("pymycobot 미설치 — 모의 동작 모드")
 
-        self._latest_point: Optional[PointStamped] = None
-        self._point_lock = threading.Lock()
+        self._latest_pick: Optional[PickPoint] = None
+        self._pick_lock = threading.Lock()
 
+        pick_topic = coord_topic.replace("pick_point_base", "pick_point")
         self.create_subscription(
-            PointStamped, coord_topic, self._on_pick_point, 10,
+            PickPoint, pick_topic, self._on_pick_point, 10,
             callback_group=self._cb_group,
         )
 
@@ -166,9 +170,9 @@ class VisionPickNode(Node):
 
     # ── 콜백 ─────────────────────────────────────────────────────────────────
 
-    def _on_pick_point(self, msg: PointStamped) -> None:
-        with self._point_lock:
-            self._latest_point = msg
+    def _on_pick_point(self, msg: PickPoint) -> None:
+        with self._pick_lock:
+            self._latest_pick = msg
 
     def _goal_cb(self, goal_request) -> GoalResponse:
         loc = goal_request.location
@@ -223,25 +227,26 @@ class VisionPickNode(Node):
 
         # Phase 3: transforming
         self._fb(goal_handle, fb, "transforming", 0.50)
-        x_mm = pick_pt.point.x * 1000.0
-        y_mm = pick_pt.point.y * 1000.0
-        z_mm = pick_pt.point.z * 1000.0
+        x_mm    = pick_pt.x * 1000.0
+        y_mm    = pick_pt.y * 1000.0
+        z_mm    = pick_pt.z * 1000.0
+        yaw_deg = pick_pt.yaw_deg
         self.get_logger().info(
-            f"[VisionPick] 픽업 좌표: x={x_mm:.1f} y={y_mm:.1f} z={z_mm:.1f} mm"
+            f"[VisionPick] 픽업 좌표: x={x_mm:.1f} y={y_mm:.1f} z={z_mm:.1f} mm  yaw={yaw_deg:.1f} deg"
         )
 
         # Phase 4: picking
         self._fb(goal_handle, fb, "picking", 0.70)
-        if not self._do_pick(x_mm, y_mm, z_mm):
+        if not self._do_pick(x_mm, y_mm, z_mm, yaw_deg):
             return self._abort(goal_handle, res, "픽업 동작 실패")
 
         # Phase 5: done
         self._fb(goal_handle, fb, "done", 1.00)
         res.success = True
         res.message = f"location={location} 픽업 완료"
-        res.pick_point_base.x = pick_pt.point.x
-        res.pick_point_base.y = pick_pt.point.y
-        res.pick_point_base.z = pick_pt.point.z
+        res.pick_point_base.x = pick_pt.x
+        res.pick_point_base.y = pick_pt.y
+        res.pick_point_base.z = pick_pt.z
         goal_handle.succeed()
         self.get_logger().info("[VisionPick] 완료")
         return res
@@ -274,20 +279,20 @@ class VisionPickNode(Node):
         self._wait_move(settle=1.0)
         return True
 
-    def _wait_for_point(self) -> Optional[PointStamped]:
-        with self._point_lock:
-            self._latest_point = None
+    def _wait_for_point(self) -> Optional[PickPoint]:
+        with self._pick_lock:
+            self._latest_pick = None
         deadline = time.monotonic() + self._detect_timeout
         while time.monotonic() < deadline:
-            with self._point_lock:
-                if self._latest_point is not None:
-                    return self._latest_point
+            with self._pick_lock:
+                if self._latest_pick is not None:
+                    return self._latest_pick
             time.sleep(0.05)
         self.get_logger().warn(f"검출 타임아웃 ({self._detect_timeout:.1f}s)")
         return None
 
-    def _do_pick(self, x_mm: float, y_mm: float, z_mm: float) -> bool:
-        rx, ry, rz = self._grasp_roll, self._grasp_pitch, self._grasp_yaw_off
+    def _do_pick(self, x_mm: float, y_mm: float, z_mm: float, yaw_deg: float) -> bool:
+        rx, ry, rz = self._grasp_roll, self._grasp_pitch, yaw_deg + self._grasp_yaw_off
         ox, oy, oz = self._tcp_offset[0], self._tcp_offset[1], self._tcp_offset[2]
         approach = [x_mm + ox, y_mm + oy, z_mm + oz + self._pick_z_off_mm, rx, ry, rz]
         pick_pos = [x_mm + ox, y_mm + oy, z_mm + oz, rx, ry, rz]

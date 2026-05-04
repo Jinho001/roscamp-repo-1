@@ -34,7 +34,7 @@ from tf2_ros import StaticTransformBroadcaster
 import tf2_ros
 from std_msgs.msg import Header
 from std_srvs.srv import SetBool
-from jetcobot_vision_msgs.msg import ObbBoxArray
+from jetcobot_vision_msgs.msg import ObbBoxArray, PickPoint
 
 
 def _euler_deg_to_rotation(rx_deg: float, ry_deg: float, rz_deg: float) -> np.ndarray:
@@ -126,7 +126,8 @@ class CoordTransformNode(Node):
         self._tf_buffer   = tf2_ros.Buffer()
         self._tf_listener = tf2_ros.TransformListener(self._tf_buffer, self)
 
-        self._pt_pub = self.create_publisher(PointStamped, "~/pick_point_base", 10)
+        self._pt_pub   = self.create_publisher(PointStamped, "~/pick_point_base", 10)
+        self._pick_pub = self.create_publisher(PickPoint, "~/pick_point", 10)
 
         sensor_qos = QoSProfile(
             reliability=QoSReliabilityPolicy.BEST_EFFORT,
@@ -173,15 +174,36 @@ class CoordTransformNode(Node):
         point_m = self._pixel_to_base(best.cx, best.cy)
         if point_m is None:
             return
+        yaw_deg = self._theta_to_yaw(best.theta)
+        stamp   = self.get_clock().now().to_msg()
+        header  = Header(stamp=stamp, frame_id="base_link")
+
+        # 기존 PointStamped 토픽 유지
         out = PointStamped()
-        out.header = Header(stamp=self.get_clock().now().to_msg(), frame_id="base_link")
+        out.header = header
         out.point.x, out.point.y, out.point.z = float(point_m[0]), float(point_m[1]), float(point_m[2])
         self._pt_pub.publish(out)
+
+        # PickPoint 토픽 (yaw 포함)
+        pp = PickPoint()
+        pp.header  = header
+        pp.x, pp.y, pp.z = float(point_m[0]), float(point_m[1]), float(point_m[2])
+        pp.yaw_deg = yaw_deg
+        self._pick_pub.publish(pp)
+
         self.get_logger().info(
             f"base_link 변환: x={point_m[0]*1000:.1f} mm  "
             f"y={point_m[1]*1000:.1f} mm  z={point_m[2]*1000:.1f} mm  "
-            f"(conf={best.confidence:.2f})"
+            f"yaw={yaw_deg:.1f} deg  (conf={best.confidence:.2f})"
         )
+
+    def _theta_to_yaw(self, theta_cam: float) -> float:
+        """카메라 픽셀 좌표계의 OBB 장축 각도(rad) → base_link yaw (deg).
+        레거시 theta_cam_to_robot()과 동일한 구현.
+        """
+        d_cam  = np.array([np.cos(theta_cam), np.sin(theta_cam), 0.0])
+        d_base = self._T_base2cam[:3, :3] @ d_cam
+        return float(np.degrees(np.arctan2(d_base[1], d_base[0])))
 
     def _pixel_to_base(self, px: float, py: float) -> np.ndarray | None:
         """픽셀 (px, py) → base_link 3D 좌표 (m). Ray-Plane 교점.
