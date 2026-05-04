@@ -35,6 +35,7 @@ import tf2_ros
 from std_msgs.msg import Header
 from std_srvs.srv import SetBool
 from jetcobot_vision_msgs.msg import ObbBoxArray, PickPoint
+from jetcobot_vision_msgs.srv import UpdatePose
 
 
 def _euler_deg_to_rotation(rx_deg: float, ry_deg: float, rz_deg: float) -> np.ndarray:
@@ -106,13 +107,12 @@ class CoordTransformNode(Node):
         obb_topic = self.get_parameter("obb_topic").value
 
         self._z_surface_m = z_surf_mm / 1000.0
+        self._T_ee2cam    = np.array(he_flat, dtype=np.float64).reshape(4, 4)
 
-        T_ee2cam   = np.array(he_flat, dtype=np.float64).reshape(4, 4)
         t_ee       = np.array(obs_pose[:3], dtype=np.float64) / 1000.0
-        R_ee       = _euler_deg_to_rotation(obs_pose[3], obs_pose[4], obs_pose[5])  # rx, ry, rz
+        R_ee       = _euler_deg_to_rotation(obs_pose[3], obs_pose[4], obs_pose[5])
         T_base2ee  = _make_T(R_ee, t_ee)
-        T_base2cam = T_base2ee @ T_ee2cam
-        self._T_base2cam = T_base2cam
+        self._T_base2cam = T_base2ee @ self._T_ee2cam
 
         fx, fy, cx, cy = K_flat
         self._K_inv = np.linalg.inv(np.array(
@@ -141,6 +141,7 @@ class CoordTransformNode(Node):
         # 활성화 플래그 — vision_pick_node가 서비스로 제어
         self._enabled = False
         self.create_service(SetBool, "~/enable", self._on_enable_srv, callback_group=_cb)
+        self.create_service(UpdatePose, "~/update_pose", self._on_update_pose, callback_group=_cb)
 
         self.get_logger().info(f"CoordTransformNode 시작 완료  (z_surface={z_surf_mm} mm)")
 
@@ -159,6 +160,20 @@ class CoordTransformNode(Node):
         ts.transform.rotation.z = qz
         ts.transform.rotation.w = qw
         self._static_br.sendTransform(ts)
+
+    def _on_update_pose(self, req: UpdatePose.Request, res: UpdatePose.Response) -> UpdatePose.Response:
+        if len(req.coords) != 6:
+            res.success, res.message = False, "coords 길이 6 필요"
+            return res
+        obs = list(req.coords)
+        t_ee      = np.array(obs[:3], dtype=np.float64) / 1000.0
+        R_ee      = _euler_deg_to_rotation(obs[3], obs[4], obs[5])
+        T_base2ee = _make_T(R_ee, t_ee)
+        self._T_base2cam = T_base2ee @ self._T_ee2cam
+        self._broadcast_tf(self._T_base2cam)
+        self.get_logger().info(f"T_base2cam 업데이트: {[round(c,2) for c in obs]}")
+        res.success, res.message = True, "업데이트 완료"
+        return res
 
     def _on_enable_srv(self, req: SetBool.Request, res: SetBool.Response) -> SetBool.Response:
         self._enabled = req.data

@@ -28,6 +28,7 @@ from std_srvs.srv import SetBool
 
 from jetcobot_vision_msgs.action import VisionPick
 from jetcobot_vision_msgs.msg import PickPoint
+from jetcobot_vision_msgs.srv import UpdatePose
 
 try:
     from pymycobot import MyCobot280 as _MC280
@@ -118,9 +119,12 @@ class VisionPickNode(Node):
             callback_group=self._cb_group,
         )
 
-        # coord_transform_node enable 서비스 클라이언트
+        # coord_transform_node 서비스 클라이언트
         self._coord_enable_client = self.create_client(
             SetBool, coord_enable_service, callback_group=self._cb_group
+        )
+        self._update_pose_client = self.create_client(
+            UpdatePose, "/coord_transform_node/update_pose", callback_group=self._cb_group
         )
 
         self._action_server = ActionServer(
@@ -131,6 +135,17 @@ class VisionPickNode(Node):
             callback_group=self._cb_group,
         )
         self.get_logger().info("VisionPickNode Action Server 대기 중")
+
+    # ── 헬퍼: coord_transform T_base2cam 실시간 업데이트 ─────────────────────
+
+    def _update_coord_transform_pose(self, coords: list) -> None:
+        if not self._update_pose_client.service_is_ready():
+            self.get_logger().warn("update_pose 서비스 미준비 — yaml 고정값 사용")
+            return
+        req = UpdatePose.Request()
+        req.coords = [float(c) for c in coords]
+        self._update_pose_client.call(req)
+        self.get_logger().info(f"실제 EE 좌표 전달: {[round(c, 2) for c in coords]}")
 
     # ── 헬퍼: coord_transform enable/disable ─────────────────────────────────
 
@@ -207,7 +222,15 @@ class VisionPickNode(Node):
             self._set_coord_transform(False)
             return self._abort(goal_handle, res, f"observe_pose 이동 실패: {location}")
 
-        # 이동 완료 → coord_transform 활성화
+        # 이동 완료 → 실제 EE 좌표 읽어서 coord_transform T_base2cam 업데이트
+        if self._mc is not None:
+            actual = self._mc.get_coords()
+            if actual and len(actual) == 6:
+                self._update_coord_transform_pose(actual)
+            else:
+                self.get_logger().warn("get_coords() 실패 — yaml 고정값 사용")
+
+        # coord_transform 활성화
         self._set_coord_transform(True)
 
         # Phase 2: detecting

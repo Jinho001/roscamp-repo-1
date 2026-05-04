@@ -1,0 +1,5 @@
+# Request: 실제 EE 좌표 [x mm, y mm, z mm, rx deg, ry deg, rz deg]
+float64[] coords
+---
+bool success
+string message
