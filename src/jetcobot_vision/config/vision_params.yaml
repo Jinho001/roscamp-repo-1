@@ -3,7 +3,7 @@
 
 detect_bridge_node:
   ros__parameters:
-    server_url:      "http://localhost:8081/latest"  # cv_detect_server.py /latest 엔드포인트
+    server_url:      "http://192.168.1.4:8081/latest"  # 메인 PC cv_detect_server.py
     poll_hz:         10.0
     request_timeout: 1.0
 
@@ -58,7 +58,7 @@ vision_pick_node:
     pick_z_offset_mm:      20.0
     detect_timeout_sec:    10.0
     coord_topic:           "/coord_transform_node/pick_point_base"
-    cv_server_url:         "http://localhost:8081"
+    cv_server_url:         "http://192.168.1.4:8081"  # 메인 PC cv_detect_server.py
     coord_enable_service:  "/coord_transform_node/enable"
     # location별 파라미터 프로파일
     # observe_pose: [x mm, y mm, z mm, rx deg, ry deg, rz deg]
