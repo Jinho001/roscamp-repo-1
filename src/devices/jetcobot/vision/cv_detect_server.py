@@ -27,12 +27,12 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 
 # ── 전역 파라미터 (argparse → globals 에 저장) ──────────────────────────────
-HSV_LOWER  = np.array([0,   0,  197],  dtype=np.uint8)
-HSV_UPPER  = np.array([158, 17, 255],  dtype=np.uint8)
+HSV_LOWER  = np.array([0,   0,  208],  dtype=np.uint8)
+HSV_UPPER  = np.array([158, 30, 255],  dtype=np.uint8)
 MIN_AREA   = 1000      # px²
 MAX_AREA   = 80000     # px²
-MIN_W, MAX_W = 30, 400 # 상자 가로 범위 (px)
-MIN_H, MAX_H = 30, 400 # 상자 세로 범위 (px)
+MIN_W, MAX_W = 110, 200 # 상자 가로 범위 (px)
+MIN_H, MAX_H = 110, 200 # 상자 세로 범위 (px)
 MORPH_K    = 7         # 형태학적 연산 커널 크기
 # ────────────────────────────────────────────────────────────────────────────
 

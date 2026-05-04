@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <n>moosinsa_navigation</n>
+  <name>moosinsa_navigation</name>
   <version>0.1.0</version>
   <description>Moosinsa 세트장(2m*1m) 맞춤 네비게이션 패키지. vendor/pinky_navigation을 오버라이드.</description>
   <maintainer email="junghyun1217@example.com">junghyun</maintainer>

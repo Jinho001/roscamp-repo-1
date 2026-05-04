@@ -65,6 +65,7 @@ def main():
                 continue
 
             sock.sendto(data, dest)
+            print(f"[STREAM] 전송: {len(data)} bytes  quality={quality}")
             time.sleep(0.03) # 약 30 FPS
     except KeyboardInterrupt:
         print("[STOP] 스트리밍 중단")
