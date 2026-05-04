@@ -1,10 +1,11 @@
 """
 jetcobot_vision.launch.py
 =========================
-세 노드를 한 번에 기동합니다:
+네 노드를 한 번에 기동합니다:
   1. detect_bridge_node  — cv_detect_server /latest 폴링 → /detect_bridge/obb_boxes
-  2. coord_transform_node — Static TF + 역투영 → /coord_transform/pick_point_base
+  2. coord_transform_node — Static TF + 역투영 → /coord_transform/pick_point
   3. vision_pick_node     — Action Server /vision_pick
+  4. vision_place_node    — Action Server /vision_place
 
 사용법:
   ros2 launch jetcobot_vision jetcobot_vision.launch.py
@@ -52,6 +53,14 @@ def generate_launch_description() -> LaunchDescription:
             package="jetcobot_vision",
             executable="vision_pick_node",
             name="vision_pick_node",
+            parameters=[params],
+            output="screen",
+            emulate_tty=True,
+        ),
+        Node(
+            package="jetcobot_vision",
+            executable="vision_place_node",
+            name="vision_place_node",
             parameters=[params],
             output="screen",
             emulate_tty=True,

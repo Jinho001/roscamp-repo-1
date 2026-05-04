@@ -1,0 +1,16 @@
+# ── Goal ──────────────────────────────────────────────────────────────────────
+# 놓을 위치 이름 (pick_place_profiles.yaml 키와 일치)
+# 예: "pinky_tray_place", "warehouse_place"
+string location
+
+---
+# ── Result ────────────────────────────────────────────────────────────────────
+bool success
+string message
+geometry_msgs/Point place_point_base  # place 완료 좌표 (base_link 프레임, 단위: m)
+
+---
+# ── Feedback ──────────────────────────────────────────────────────────────────
+# phase: "moving" | "detecting" | "placing" | "done"
+string  phase
+float32 progress  # 0.0 ~ 1.0

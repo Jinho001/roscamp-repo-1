@@ -29,6 +29,7 @@ setup(
             'detect_bridge_node   = jetcobot_vision.detect_bridge_node:main',
             'coord_transform_node = jetcobot_vision.coord_transform_node:main',
             'vision_pick_node     = jetcobot_vision.vision_pick_node:main',
+            'vision_place_node    = jetcobot_vision.vision_place_node:main',
         ],
     },
 )

@@ -19,16 +19,16 @@ tray:                                     # 핑키 적재함 상자 픽업
   grasp_yaw_offset: 0.0
   pick_z_offset_mm: 20.0
 
-receiving_zone:                           # 회수존 상자 픽업 (실측 후 수정)
-  observe_pose: [-62.4, -87.9, 314.2, -161.81, 0.94, -179.37]
-  z_surface_mm: 95.0
+receiving_zone:                           # 회수존(입고존) 상자 픽업 (실측 후 수정)
+  observe_pose: [151.6, -40.4, 273.4, 177.79, 0.31, -91.16]
+  z_surface_mm: 55.0
   hsv_lower: [0, 0, 208]
   hsv_upper: [158, 30, 255]
   min_w: 110
   max_w: 200
   min_h: 110
   max_h: 200
-  grasp_roll: -178.81
+  grasp_roll: 179
   grasp_pitch: 0.94
   grasp_yaw_offset: 0.0
   pick_z_offset_mm: 20.0
@@ -42,9 +42,15 @@ warehouse_pick:                           # 창고 고정 위치 픽업 (비전 
 
 # ── Place 프로파일 ─────────────────────────────────────────────────────────────
 
-pinky_tray_place:                         # 핑키 적재함 place (ArUco 마커 인식)
+pinky_tray_place:                         # 핑키 적재함 place (색상 스티커 HSV 인식)
   observe_pose: null                      # TODO: 실측 후 입력
   z_surface_mm: null                      # TODO: 실측 후 입력
+  hsv_lower: [20, 100, 100]              # 형광 스티커 색상 (실측 후 튜닝)
+  hsv_upper: [40, 255, 255]
+  min_w: 30
+  max_w: 150
+  min_h: 30
+  max_h: 150
   grasp_roll: -178.81                     # TODO: place 자세 실측 후 수정
   grasp_pitch: 0.94
   grasp_yaw_offset: 0.0

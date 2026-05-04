@@ -16,6 +16,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/PickPoint.msg"
   "srv/UpdatePose.srv"
   "action/VisionPick.action"
+  "action/VisionPlace.action"
   DEPENDENCIES std_msgs geometry_msgs
 )
 
