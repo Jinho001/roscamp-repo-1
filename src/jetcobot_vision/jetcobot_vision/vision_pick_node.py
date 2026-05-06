@@ -351,7 +351,10 @@ class VisionPickNode(Node):
         pitch      = profile.get("grasp_pitch",      self._grasp_pitch)   if profile else self._grasp_pitch
         yaw_offset = profile.get("grasp_yaw_offset", self._grasp_yaw_off) if profile else self._grasp_yaw_off
         z_offset   = profile.get("pick_z_offset_mm", self._pick_z_off_mm) if profile else self._pick_z_off_mm
-        rx, ry, rz = roll, pitch, yaw_deg + yaw_offset
+        rz = yaw_deg + yaw_offset
+        while rz > 180.0:  rz -= 360.0
+        while rz < -180.0: rz += 360.0
+        rx, ry = roll, pitch
         ox, oy, oz = self._tcp_offset[0], self._tcp_offset[1], self._tcp_offset[2]
         approach = [x_mm + ox, y_mm + oy, z_mm + oz + z_offset, rx, ry, rz]
         pick_pos = [x_mm + ox, y_mm + oy, z_mm + oz, rx, ry, rz]
