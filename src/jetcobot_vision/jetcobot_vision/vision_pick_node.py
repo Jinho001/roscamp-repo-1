@@ -28,6 +28,8 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from std_srvs.srv import SetBool
+from rcl_interfaces.srv import SetParameters
+from rcl_interfaces.msg import Parameter, ParameterValue, ParameterType
 
 from jetcobot_vision_msgs.action import VisionPick
 from jetcobot_vision_msgs.msg import PickPoint
@@ -120,6 +122,9 @@ class VisionPickNode(Node):
         self._update_pose_client = self.create_client(
             UpdatePose, "/coord_transform_node/update_pose", callback_group=self._cb_group
         )
+        self._set_params_client = self.create_client(
+            SetParameters, "/coord_transform_node/set_parameters", callback_group=self._cb_group
+        )
 
         self._action_server = ActionServer(
             self, VisionPick, "vision_pick",
@@ -162,14 +167,30 @@ class VisionPickNode(Node):
         if "max_w"     in profile: cfg["max_w"]     = int(profile["max_w"])
         if "min_h"     in profile: cfg["min_h"]     = int(profile["min_h"])
         if "max_h"     in profile: cfg["max_h"]     = int(profile["max_h"])
-        if not cfg:
-            return
-        try:
-            url = f"{self._cv_server_url}/config"
-            requests.post(url, json=cfg, timeout=1.0)
-            self.get_logger().info(f"cv_detect_server 파라미터 전송: {cfg}")
-        except Exception as exc:
-            self.get_logger().warn(f"cv_detect_server /config 전송 실패: {exc}")
+        if cfg:
+            try:
+                url = f"{self._cv_server_url}/config"
+                requests.post(url, json=cfg, timeout=1.0)
+                self.get_logger().info(f"cv_detect_server 파라미터 전송: {cfg}")
+            except Exception as exc:
+                self.get_logger().warn(f"cv_detect_server /config 전송 실패: {exc}")
+
+        # z_surface_mm을 coord_transform_node 파라미터로 업데이트
+        if "z_surface_mm" in profile and profile["z_surface_mm"] is not None:
+            z = float(profile["z_surface_mm"])
+            try:
+                if self._set_params_client.service_is_ready():
+                    req = SetParameters.Request()
+                    p = Parameter()
+                    p.name = "z_surface_mm"
+                    p.value = ParameterValue(
+                        type=ParameterType.PARAMETER_DOUBLE, double_value=z
+                    )
+                    req.parameters = [p]
+                    self._set_params_client.call(req)
+                    self.get_logger().info(f"z_surface_mm 업데이트: {z} mm")
+            except Exception as exc:
+                self.get_logger().warn(f"z_surface_mm 업데이트 실패: {exc}")
 
     # ── 헬퍼: location 프로파일 로드 ─────────────────────────────────────────
 
