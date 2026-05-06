@@ -99,7 +99,7 @@ class CoordTransformNode(Node):
         self.declare_parameter("camera_intrinsics", _default_K)
         self.declare_parameter("observe_pose",      _default_obs)
         self.declare_parameter("z_surface_mm",      95.0)
-        self.declare_parameter("obb_topic",         "/vision_detector/obb_boxes")
+        self.declare_parameter("obb_topic",         "/detect_bridge_node/obb_boxes")
 
         he_flat   = list(self.get_parameter("handeye_matrix").value)
         K_flat    = list(self.get_parameter("camera_intrinsics").value)
