@@ -29,6 +29,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy, QoSDurabilityPolicy
+from rcl_interfaces.msg import SetParametersResult
 from geometry_msgs.msg import TransformStamped, PointStamped
 from tf2_ros import StaticTransformBroadcaster
 import tf2_ros
@@ -143,6 +144,8 @@ class CoordTransformNode(Node):
         self.create_service(SetBool, "~/enable", self._on_enable_srv, callback_group=_cb)
         self.create_service(UpdatePose, "~/update_pose", self._on_update_pose, callback_group=_cb)
 
+        self.add_on_set_parameters_callback(self._on_param_change)
+
         self.get_logger().info(f"CoordTransformNode 시작 완료  (z_surface={z_surf_mm} mm)")
 
     def _broadcast_tf(self, T: np.ndarray) -> None:
@@ -174,6 +177,13 @@ class CoordTransformNode(Node):
         self.get_logger().info(f"T_base2cam 업데이트: {[round(c,2) for c in obs]}")
         res.success, res.message = True, "업데이트 완료"
         return res
+
+    def _on_param_change(self, params) -> SetParametersResult:
+        for p in params:
+            if p.name == "z_surface_mm":
+                self._z_surface_m = float(p.value) / 1000.0
+                self.get_logger().info(f"z_surface_mm 업데이트: {p.value} mm")
+        return SetParametersResult(successful=True)
 
     def _on_enable_srv(self, req: SetBool.Request, res: SetBool.Response) -> SetBool.Response:
         self._enabled = req.data
