@@ -52,8 +52,8 @@ vision_pick_node:
     grasp_pitch:           0.94
     grasp_yaw_offset:      0.0
     tcp_offset:
-      - 0.0
-      - 20.0
+      - -15.0
+      - 30.5
       - 110.0
     pick_z_offset_mm:      20.0
     detect_timeout_sec:    10.0
