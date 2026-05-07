@@ -195,29 +195,43 @@ class CoordTransformNode(Node):
     def _on_obb(self, msg: ObbBoxArray) -> None:
         if not self._enabled or not msg.boxes:
             return
-        best    = max(msg.boxes, key=lambda b: b.confidence)
+
+        stamp  = self.get_clock().now().to_msg()
+        header = Header(stamp=stamp, frame_id="base_link")
+
+        # 최고 confidence 상자 선택 (기존 호환성 유지)
+        best_idx = max(range(len(msg.boxes)), key=lambda i: msg.boxes[i].confidence)
+        best = msg.boxes[best_idx]
+
         point_m = self._pixel_to_base(best.cx, best.cy)
         if point_m is None:
             return
         yaw_deg = self._theta_to_yaw(best.theta)
-        stamp   = self.get_clock().now().to_msg()
-        header  = Header(stamp=stamp, frame_id="base_link")
 
-        # 기존 PointStamped 토픽 유지
+        # 기존 PointStamped 토픽 유지 (최고 confidence 상자만)
         out = PointStamped()
         out.header = header
         out.point.x, out.point.y, out.point.z = float(point_m[0]), float(point_m[1]), float(point_m[2])
         self._pt_pub.publish(out)
 
-        # PickPoint 토픽 (yaw 포함)
-        pp = PickPoint()
-        pp.header  = header
-        pp.x, pp.y, pp.z = float(point_m[0]), float(point_m[1]), float(point_m[2])
-        pp.yaw_deg = yaw_deg
-        self._pick_pub.publish(pp)
+        # 모든 상자에 대해 PickPoint 토픽 발행
+        for idx, box in enumerate(msg.boxes):
+            pt_m = self._pixel_to_base(box.cx, box.cy)
+            if pt_m is None:
+                continue
+            yaw = self._theta_to_yaw(box.theta)
+
+            pp = PickPoint()
+            pp.header = header
+            pp.x, pp.y, pp.z = float(pt_m[0]), float(pt_m[1]), float(pt_m[2])
+            pp.yaw_deg = yaw
+            pp.box_index = idx
+            pp.confidence = box.confidence
+            self._pick_pub.publish(pp)
 
         self.get_logger().info(
-            f"base_link 변환: x={point_m[0]*1000:.1f} mm  "
+            f"base_link 변환: {len(msg.boxes)}개 상자 발행  "
+            f"best[{best_idx}] x={point_m[0]*1000:.1f} mm  "
             f"y={point_m[1]*1000:.1f} mm  z={point_m[2]*1000:.1f} mm  "
             f"yaw={yaw_deg:.1f} deg  (conf={best.confidence:.2f})"
         )

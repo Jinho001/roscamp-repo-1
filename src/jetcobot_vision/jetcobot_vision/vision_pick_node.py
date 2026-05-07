@@ -106,7 +106,7 @@ class VisionPickNode(Node):
             self._mc = None
             self.get_logger().warn("pymycobot 미설치 — 모의 동작 모드")
 
-        self._latest_pick: Optional[PickPoint] = None
+        self._pick_points: list[PickPoint] = []  # 모든 검출된 상자
         self._pick_lock = threading.Lock()
 
         self.create_subscription(
@@ -200,7 +200,7 @@ class VisionPickNode(Node):
 
     def _on_pick_point(self, msg: PickPoint) -> None:
         with self._pick_lock:
-            self._latest_pick = msg
+            self._pick_points.append(msg)
 
     def _goal_cb(self, goal_request) -> GoalResponse:
         loc = goal_request.location
@@ -213,10 +213,13 @@ class VisionPickNode(Node):
 
     async def _execute_cb(self, goal_handle) -> VisionPick.Result:
         location = goal_handle.request.location
+        box_index = goal_handle.request.box_index if hasattr(goal_handle.request, 'box_index') else -1
         fb  = VisionPick.Feedback()
         res = VisionPick.Result()
 
-        self.get_logger().info(f"[VisionPick] 실행 시작  location={location}")
+        self.get_logger().info(
+            f"[VisionPick] 실행 시작  location={location}  box_index={box_index}"
+        )
 
         # Phase 1: moving
         self._fb(goal_handle, fb, "moving", 0.10)
@@ -263,7 +266,7 @@ class VisionPickNode(Node):
 
         # Phase 2: detecting
         self._fb(goal_handle, fb, "detecting", 0.30)
-        pick_pt = self._wait_for_point()
+        pick_pt = self._wait_for_point(box_index)
         if pick_pt is None:
             self._set_coord_transform(False)
             return self._abort(goal_handle, res, "검출 타임아웃")
@@ -339,14 +342,30 @@ class VisionPickNode(Node):
         self._wait_move(settle=1.0)
         return True
 
-    def _wait_for_point(self) -> Optional[PickPoint]:
+    def _wait_for_point(self, box_index: int = -1) -> Optional[PickPoint]:
+        """상자 감지 대기.
+        box_index: -1 = 최고 confidence (기본값), 0~N = 특정 상자 선택
+        """
         with self._pick_lock:
-            self._latest_pick = None
+            self._pick_points.clear()
         deadline = time.monotonic() + self._detect_timeout
         while time.monotonic() < deadline:
             with self._pick_lock:
-                if self._latest_pick is not None:
-                    return self._latest_pick
+                if self._pick_points:
+                    # box_index가 -1이면 confidence 최고 선택, 아니면 index로 선택
+                    if box_index < 0:
+                        selected = max(self._pick_points, key=lambda p: p.confidence)
+                    else:
+                        if box_index < len(self._pick_points):
+                            selected = self._pick_points[box_index]
+                        else:
+                            self.get_logger().warn(f"box_index {box_index} 범위 초과 ({len(self._pick_points)}개)")
+                            return None
+                    # 선택된 상자 정보 로깅
+                    self.get_logger().info(
+                        f"선택된 상자: index={selected.box_index} confidence={selected.confidence:.2f}"
+                    )
+                    return selected
             time.sleep(0.05)
         self.get_logger().warn(f"검출 타임아웃 ({self._detect_timeout:.1f}s)")
         return None

@@ -2,6 +2,8 @@
 # 픽업할 위치 이름 (workspace_config.yaml 키와 일치)
 # 예: "tray", "shelf_A1"
 string location
+# 상자 인덱스 (-1 = 최고 confidence 상자, 0~N = 특정 상자 선택)
+int32 box_index -1
 
 ---
 # ── Result ────────────────────────────────────────────────────────────────────

@@ -31,11 +31,13 @@ class VisionPickTestClient(Node):
             raise RuntimeError("[ERR] /vision_pick action server 미응답")
         self.get_logger().info("[OK] /vision_pick action server 연결됨")
 
-    def send_goal(self, location: str):
+    def send_goal(self, location: str, box_index: int = -1):
         goal = VisionPick.Goal()
         goal.location = location
+        goal.box_index = box_index
 
-        self.get_logger().info(f"Goal 송신: location={location}")
+        idx_str = f"(index={box_index})" if box_index >= 0 else "(최고 confidence)"
+        self.get_logger().info(f"Goal 송신: location={location} {idx_str}")
         future = self.action_client.send_goal_async(goal)
 
         def goal_response_callback(future):
@@ -72,6 +74,7 @@ class VisionPickTestClient(Node):
 def main():
     parser = argparse.ArgumentParser(description="Test VisionPick Action Server")
     parser.add_argument("location", help="Location name (tray, receiving_zone, etc.)")
+    parser.add_argument("--box", type=int, default=-1, help="Box index (-1 = highest confidence)")
     parser.add_argument("--list", action="store_true", help="List all locations (TODO)")
     parser.add_argument("--timeout", type=float, default=60.0, help="Timeout in seconds")
 
@@ -80,7 +83,7 @@ def main():
     rclpy.init()
     try:
         client = VisionPickTestClient()
-        client.send_goal(args.location)
+        client.send_goal(args.location, args.box)
 
         # Spin with timeout
         start = time.time()
