@@ -52,9 +52,9 @@ def wait_move(mc: MyCobot280) -> None:
 def apply_tcp(coord: list, tcp: list) -> list:
     """픽업 목표 좌표에 tcp_offset 적용."""
     return [
-        coord[0]
-        coord[1]
-        coord[2]
+        coord[0] + tcp[0],
+        coord[1] + tcp[1],
+        coord[2] + tcp[2],
         coord[3], coord[4], coord[5],
     ]
 

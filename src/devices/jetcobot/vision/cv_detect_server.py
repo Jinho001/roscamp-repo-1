@@ -45,8 +45,8 @@ HSV_LOWER  = np.array([0,   0,  208],  dtype=np.uint8)
 HSV_UPPER  = np.array([158, 30, 255],  dtype=np.uint8)
 MIN_AREA   = 1000
 MAX_AREA   = 80000
-MIN_W, MAX_W = 110, 200
-MIN_H, MAX_H = 110, 200
+MIN_W, MAX_W = 0, 400
+MIN_H, MAX_H = 0, 400
 MORPH_K    = 7
 # ────────────────────────────────────────────────────────────────────────────
 

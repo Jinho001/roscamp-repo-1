@@ -39,16 +39,22 @@ VISION_LOCATIONS = ["tray", "receiving_zone", "pinky_tray_place"]
 
 
 class ProfileTuner:
-    def __init__(self, location: str, profiles_path: str):
+    def __init__(self, location: str, profiles_path: str, fx: float = 990.81, fy: float = 987.62, z_surface_mm: float = 95.0):
         self.location = location
         self.profiles_path = Path(profiles_path)
         self.profiles = self._load_profiles()
         self.cap = RemoteCapture(port=5000)
 
+        # 카메라 캘리브레이션 (camera_info.yaml 2026-05 기준)
+        self.fx = fx
+        self.fy = fy
+        self.z_surface_mm = z_surface_mm
+
         self._build_windows()
         self._init_trackbars()
 
         print(f"\n[ProfileTuner] Location: {self.location}")
+        print(f"[ProfileTuner] 카메라: fx={self.fx:.2f}, fy={self.fy:.2f}, z={self.z_surface_mm:.1f}mm")
         print(f"[ProfileTuner] 슬라이더로 값 조정 후:")
         print(f"  'p' - 저장")
         print(f"  '1'~'5' - location 전환")
@@ -167,11 +173,17 @@ class ProfileTuner:
             while angle < -90.0:
                 angle += 180.0
 
+            # 픽셀 → mm 변환 (z_surface 기반)
+            w_mm = (w / self.fx) * self.z_surface_mm
+            h_mm = (h / self.fy) * self.z_surface_mm
+
             detections.append({
                 "cx": cx,
                 "cy": cy,
                 "w": w,
                 "h": h,
+                "w_mm": w_mm,
+                "h_mm": h_mm,
                 "angle": angle,
                 "area": area,
             })
@@ -181,9 +193,11 @@ class ProfileTuner:
     def _draw_frame(self, frame: np.ndarray, detections: list, params: dict) -> np.ndarray:
         """프레임에 OBB 오버레이."""
         display = frame.copy()
-        for det in detections:
+        for i, det in enumerate(detections):
             cx, cy = int(det["cx"]), int(det["cy"])
             w, h = det["w"], det["h"]
+            w_mm = det["w_mm"]
+            h_mm = det["h_mm"]
             angle = det["angle"]
 
             # 좌표계: OpenCV (x는 오른쪽, y는 아래)
@@ -203,23 +217,25 @@ class ProfileTuner:
             pts = np.array([(int(x), int(y)) for x, y in corners], np.int32)
             cv2.polylines(display, [pts], True, (0, 255, 0), 2)
             cv2.circle(display, (cx, cy), 5, (0, 255, 255), -1)
-            cv2.putText(display, f"θ={angle:.1f}°", (cx + 8, cy),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
 
-        # 파라미터 텍스트
-        info_text = [
-            f"Location: {self.location}",
-            f"Detections: {len(detections)}",
-            f"HSV: ({params['hsv_lower'][0]}-{params['hsv_upper'][0]}, "
-            f"{params['hsv_lower'][1]}-{params['hsv_upper'][1]}, "
-            f"{params['hsv_lower'][2]}-{params['hsv_upper'][2]})",
-            f"W: {params['min_w']}-{params['max_w']}, "
-            f"H: {params['min_h']}-{params['max_h']}",
+            # 픽셀과 mm 함께 표시
+            label = f"#{i} θ={angle:.1f}°\n{w:.0f}px({w_mm:.1f}mm) × {h:.0f}px({h_mm:.1f}mm)"
+            y_text = cy - 20
+            for line in label.split('\n'):
+                cv2.putText(display, line, (cx + 8, y_text),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 255), 1)
+                y_text += 15
+
+        # 헤더: 설정값 및 예상값
+        header_text = [
+            f"Location: {self.location} | z={self.z_surface_mm:.1f}mm | Expected: 30×20mm (box)",
+            f"Detections: {len(detections)} | HSV: {params['hsv_lower']}-{params['hsv_upper']}",
+            f"W: {params['min_w']}-{params['max_w']}px | H: {params['min_h']}-{params['max_h']}px",
         ]
-        y_offset = 30
-        for text in info_text:
-            cv2.putText(display, text, (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-            y_offset += 25
+        y_offset = 25
+        for text in header_text:
+            cv2.putText(display, text, (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
+            y_offset += 20
 
         return display
 
@@ -307,6 +323,12 @@ def main():
     parser.add_argument("--config",
                        default="/home/addinedu/roscamp-repo-1/src/jetcobot_vision/config/pick_place_profiles.yaml",
                        help="pick_place_profiles.yaml 경로")
+    parser.add_argument("--fx", type=float, default=990.8120239698858,
+                       help="카메라 fx (기본: camera_info.yaml 2026-05 값)")
+    parser.add_argument("--fy", type=float, default=987.6160053978392,
+                       help="카메라 fy")
+    parser.add_argument("--z-surface", type=float, default=95.0,
+                       help="작업면 높이 mm (profile의 z_surface_mm)")
 
     args = parser.parse_args()
 
@@ -319,9 +341,11 @@ def main():
 
     print(f"\n{'='*60}")
     print(f"Profile Tuner — Location: {args.location}")
+    print(f"Camera: fx={args.fx:.2f}, fy={args.fy:.2f}")
+    print(f"Z-Surface: {args.z_surface:.1f}mm")
     print(f"{'='*60}\n")
 
-    tuner = ProfileTuner(args.location, args.config)
+    tuner = ProfileTuner(args.location, args.config, fx=args.fx, fy=args.fy, z_surface_mm=args.z_surface)
     tuner.run()
 
 
