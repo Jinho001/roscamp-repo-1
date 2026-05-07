@@ -72,14 +72,10 @@ class ProfileTuner:
         cv2.namedWindow(WINDOW_SRC, cv2.WINDOW_NORMAL)
         cv2.namedWindow(WINDOW_MASK, cv2.WINDOW_NORMAL)
         cv2.namedWindow(WINDOW_CTRL, cv2.WINDOW_NORMAL)
-        cv2.resizeWindow(WINDOW_CTRL, 500, 700)
+        cv2.resizeWindow(WINDOW_CTRL, 600, 800)
 
-        # Controls 창에 초기 이미지 표시 (슬라이더 생성 전)
-        init_img = self._draw_controls([], self.params)
-        cv2.imshow(WINDOW_CTRL, init_img)
-        cv2.waitKey(100)  # 창이 완전히 렌더링될 때까지 대기
-
-        self._create_trackbars()
+        print("\n[Ready] 영상을 기다리는 중... (stream_sender.py 실행 필요)")
+        print(f"Location: {self.location} | Camera: fx={self.fx:.2f}, fy={self.fy:.2f}, z={self.z_surface_mm:.1f}mm\n")
 
     def _load_profiles(self) -> dict:
         """pick_place_profiles.yaml 로드."""
@@ -100,29 +96,6 @@ class ProfileTuner:
             "max_h": profile.get("max_h", 300),
         }
 
-    def _create_trackbars(self) -> None:
-        """슬라이더 생성 및 초기값 설정."""
-        for name, min_val, max_val, key_info in TRACKBARS:
-            key, idx = key_info
-            if idx is not None:
-                init_val = self.params[key][idx]
-            else:
-                init_val = self.params[key]
-            cv2.createTrackbar(name, WINDOW_CTRL, init_val, max_val, lambda v: None)
-
-    def _read_trackbars(self) -> dict:
-        """슬라이더 값 읽기."""
-        values = {}
-        for name, _, _, key_info in TRACKBARS:
-            val = cv2.getTrackbarPos(name, WINDOW_CTRL)
-            key, idx = key_info
-            if idx is not None:
-                if key not in values:
-                    values[key] = list(self.params[key])
-                values[key][idx] = val
-            else:
-                values[key] = val
-        return values
 
     def _detect_boxes(self, frame: np.ndarray, params: dict) -> tuple:
         """cv_detect_server.py의 detect_box_cv 로직."""
@@ -236,61 +209,73 @@ class ProfileTuner:
         return display
 
     def _draw_controls(self, detections: list, params: dict) -> np.ndarray:
-        """Controls 창: 슬라이더 값과 검출 결과 표시."""
+        """Controls 창: 파라미터 값과 검출 결과 표시."""
         # 검은 배경 (800x600)
-        img = np.zeros((700, 500, 3), dtype=np.uint8)
-        img.fill(40)
+        img = np.zeros((800, 600, 3), dtype=np.uint8)
+        img.fill(30)
 
         y = 20
         font = cv2.FONT_HERSHEY_SIMPLEX
         font_size = 0.5
-        color_label = (200, 200, 200)
+        color_label = (180, 180, 180)
         color_value = (0, 255, 255)
         color_header = (100, 200, 255)
 
         # 헤더
-        cv2.putText(img, f"Location: {self.location}", (10, y), font, 0.6, color_header, 1)
-        y += 25
+        cv2.putText(img, f"Location: {self.location}", (10, y), font, 0.7, color_header, 2)
+        y += 35
 
         # HSV 값
         h_l, s_l, v_l = params["hsv_lower"]
         h_u, s_u, v_u = params["hsv_upper"]
+
         cv2.putText(img, "HSV Lower:", (10, y), font, font_size, color_label, 1)
-        cv2.putText(img, f"[{h_l:3d}, {s_l:3d}, {v_l:3d}]", (150, y), font, font_size, color_value, 1)
         y += 20
+        cv2.putText(img, f"  H: {h_l:3d} (0-179)", (20, y), font, font_size, color_value, 1)
+        y += 18
+        cv2.putText(img, f"  S: {s_l:3d} (0-255)", (20, y), font, font_size, color_value, 1)
+        y += 18
+        cv2.putText(img, f"  V: {v_l:3d} (0-255)", (20, y), font, font_size, color_value, 1)
+        y += 25
 
         cv2.putText(img, "HSV Upper:", (10, y), font, font_size, color_label, 1)
-        cv2.putText(img, f"[{h_u:3d}, {s_u:3d}, {v_u:3d}]", (150, y), font, font_size, color_value, 1)
+        y += 20
+        cv2.putText(img, f"  H: {h_u:3d} (0-179)", (20, y), font, font_size, color_value, 1)
+        y += 18
+        cv2.putText(img, f"  S: {s_u:3d} (0-255)", (20, y), font, font_size, color_value, 1)
+        y += 18
+        cv2.putText(img, f"  V: {v_u:3d} (0-255)", (20, y), font, font_size, color_value, 1)
         y += 25
 
         # W/H 값
-        cv2.putText(img, f"W Range: {params['min_w']:3d} ~ {params['max_w']:3d} px", (10, y), font, font_size, color_label, 1)
+        cv2.putText(img, "Size Filters:", (10, y), font, font_size, color_label, 1)
         y += 20
-        cv2.putText(img, f"H Range: {params['min_h']:3d} ~ {params['max_h']:3d} px", (10, y), font, font_size, color_label, 1)
+        cv2.putText(img, f"  W: {params['min_w']:3d} ~ {params['max_w']:3d} px", (20, y), font, font_size, color_value, 1)
+        y += 18
+        cv2.putText(img, f"  H: {params['min_h']:3d} ~ {params['max_h']:3d} px", (20, y), font, font_size, color_value, 1)
         y += 30
 
         # 검출 결과
-        cv2.putText(img, "DETECTIONS:", (10, y), font, 0.55, color_header, 1)
+        cv2.putText(img, f"DETECTIONS ({len(detections)}):", (10, y), font, 0.6, color_header, 1)
         y += 25
 
         if len(detections) == 0:
-            cv2.putText(img, "No detections", (10, y), font, font_size, (100, 100, 100), 1)
+            cv2.putText(img, "No detections", (20, y), font, font_size, (100, 100, 100), 1)
         else:
-            for i, det in enumerate(detections):
+            for i, det in enumerate(detections[:5]):  # 최대 5개만 표시
                 text = f"#{i}: {det['w']:.0f}px({det['w_mm']:.1f}mm) × {det['h']:.0f}px({det['h_mm']:.1f}mm)"
-                cv2.putText(img, text, (10, y), font, 0.45, (100, 255, 100), 1)
+                cv2.putText(img, text, (20, y), font, 0.45, (100, 255, 100), 1)
                 y += 18
-                if y > 650:
-                    break
+            if len(detections) > 5:
+                cv2.putText(img, f"... and {len(detections)-5} more", (20, y), font, 0.4, (100, 150, 100), 1)
 
-        y += 20
-
+        y = 700
         # 조작 안내
-        cv2.putText(img, "SHORTCUTS:", (10, y), font, 0.55, (255, 180, 100), 1)
+        cv2.putText(img, "KEYBOARD SHORTCUTS:", (10, y), font, 0.55, (255, 180, 100), 1)
         y += 20
-        for shortcut, desc in [("P", "Save to YAML"), ("Q", "Quit"), ("1-5", "Change location"), ("H", "Help")]:
+        for shortcut, desc in [("P", "Save"), ("1-5", "Location"), ("Q", "Quit")]:
             text = f"[{shortcut}] {desc}"
-            cv2.putText(img, text, (15, y), font, 0.4, (180, 180, 180), 1)
+            cv2.putText(img, text, (20, y), font, 0.45, (180, 180, 180), 1)
             y += 16
 
         return img
@@ -311,13 +296,7 @@ class ProfileTuner:
         self.profiles = self._load_profiles()
         self.params = self._load_params_from_profile(self.location)
 
-        # 슬라이더 창 삭제 후 재생성
-        cv2.destroyWindow(WINDOW_CTRL)
-        cv2.namedWindow(WINDOW_CTRL, cv2.WINDOW_NORMAL)
-        cv2.resizeWindow(WINDOW_CTRL, 500, 700)
-        self._create_trackbars()
-
-        print(f"[Location] {self.location}로 전환")
+        print(f"[✓] Location: {self.location}로 전환")
 
     def _save(self) -> None:
         """pick_place_profiles.yaml에 저장."""
@@ -343,17 +322,11 @@ class ProfileTuner:
 
     def run(self) -> None:
         """메인 루프."""
-        print("\n[Ready] 영상을 기다리는 중... (stream_sender.py 실행 필요)")
-        print(f"Location: {self.location} | Camera: fx={self.fx:.2f}, fy={self.fy:.2f}, z={self.z_surface_mm:.1f}mm\n")
-
         while True:
             ret, frame = self.cap.read()
             if not ret or frame is None:
                 time.sleep(0.01)
                 continue
-
-            # 현재 슬라이더 값 읽기
-            self.params = self._read_trackbars()
 
             # 검출
             mask, detections = self._detect_boxes(frame, self.params)
@@ -382,9 +355,37 @@ class ProfileTuner:
                 self._change_location("warehouse_pick")
             elif key == ord('5'):
                 self._change_location("warehouse_place")
+            elif key in [ord(str(i)) for i in range(10)]:
+                # 숫자 키: 파라미터 조정용
+                # 예: 0 누르면 h-lower +1, 1 누르면 h-lower -1, etc.
+                pass
 
         self.cap.release()
         cv2.destroyAllWindows()
+
+
+def print_help():
+    """헬프 메시지."""
+    print("""
+【 터미널 명령어 】
+  h-lower <값>     - HSV H Lower (0-179)
+  s-lower <값>     - HSV S Lower (0-255)
+  v-lower <값>     - HSV V Lower (0-255)
+  h-upper <값>     - HSV H Upper (0-179)
+  s-upper <값>     - HSV S Upper (0-255)
+  v-upper <값>     - HSV V Upper (0-255)
+  min-w <값>       - Min W (0-640)
+  max-w <값>       - Max W (0-640)
+  min-h <값>       - Min H (0-640)
+  max-h <값>       - Max H (0-640)
+
+【 단축키 (영상 창에서) 】
+  P: 저장 | Q: 종료 | 1-5: location 전환
+
+예:
+  > v-lower 215
+  > min-w 100
+""")
 
 
 def main():
@@ -417,6 +418,56 @@ def main():
     print(f"{'='*70}\n")
 
     tuner = ProfileTuner(args.location, args.config, fx=args.fx, fy=args.fy, z_surface_mm=args.z_surface)
+
+    # 사용자 입력 루프 (별도 스레드)
+    import threading
+    def input_loop():
+        print_help()
+        while tuner.cap.is_running:
+            try:
+                cmd = input("> ").strip().lower()
+                if not cmd:
+                    continue
+
+                parts = cmd.split()
+                if len(parts) == 2:
+                    key, val = parts[0], parts[1]
+                    try:
+                        val = int(val)
+                        if key == "h-lower":
+                            tuner.params["hsv_lower"][0] = max(0, min(179, val))
+                        elif key == "s-lower":
+                            tuner.params["hsv_lower"][1] = max(0, min(255, val))
+                        elif key == "v-lower":
+                            tuner.params["hsv_lower"][2] = max(0, min(255, val))
+                        elif key == "h-upper":
+                            tuner.params["hsv_upper"][0] = max(0, min(179, val))
+                        elif key == "s-upper":
+                            tuner.params["hsv_upper"][1] = max(0, min(255, val))
+                        elif key == "v-upper":
+                            tuner.params["hsv_upper"][2] = max(0, min(255, val))
+                        elif key == "min-w":
+                            tuner.params["min_w"] = max(0, min(640, val))
+                        elif key == "max-w":
+                            tuner.params["max_w"] = max(0, min(640, val))
+                        elif key == "min-h":
+                            tuner.params["min_h"] = max(0, min(640, val))
+                        elif key == "max-h":
+                            tuner.params["max_h"] = max(0, min(640, val))
+                        else:
+                            print("[ERR] 알 수 없는 파라미터")
+                            continue
+                        print(f"✓ {key} = {val}")
+                    except ValueError:
+                        print("[ERR] 숫자를 입력해주세요")
+            except EOFError:
+                break
+            except KeyboardInterrupt:
+                break
+
+    thread = threading.Thread(target=input_loop, daemon=True)
+    thread.start()
+
     tuner.run()
 
 
