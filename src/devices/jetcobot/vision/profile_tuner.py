@@ -74,6 +74,11 @@ class ProfileTuner:
         cv2.namedWindow(WINDOW_CTRL, cv2.WINDOW_NORMAL)
         cv2.resizeWindow(WINDOW_CTRL, 500, 700)
 
+        # Controls 창에 초기 이미지 표시 (슬라이더 생성 전)
+        init_img = self._draw_controls([], self.params)
+        cv2.imshow(WINDOW_CTRL, init_img)
+        cv2.waitKey(100)  # 창이 완전히 렌더링될 때까지 대기
+
         self._create_trackbars()
 
     def _load_profiles(self) -> dict:
