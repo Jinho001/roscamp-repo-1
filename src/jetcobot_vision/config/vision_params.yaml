@@ -54,6 +54,7 @@ vision_pick_node:
     detect_timeout_sec:    10.0
     coord_topic:           "/coord_transform_node/pick_point"
     coord_enable_service:  "/coord_transform_node/enable"
+    cv_detect_server_url:  "http://192.168.1.4:8000"
 
 vision_place_node:
   ros__parameters:
@@ -70,3 +71,4 @@ vision_place_node:
     detect_timeout_sec:    10.0
     coord_topic:           "/coord_transform_node/pick_point"
     coord_enable_service:  "/coord_transform_node/enable"
+    cv_detect_server_url:  "http://192.168.1.4:8000"

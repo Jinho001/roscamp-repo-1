@@ -22,6 +22,7 @@ import time
 import threading
 from typing import Optional
 
+import requests
 import yaml
 import rclpy
 from rclpy.action import ActionServer, CancelResponse, GoalResponse
@@ -76,6 +77,7 @@ class VisionPlaceNode(Node):
         self.declare_parameter("detect_timeout_sec",   10.0)
         self.declare_parameter("coord_topic",          "/coord_transform_node/pick_point")
         self.declare_parameter("coord_enable_service", "/coord_transform_node/enable")
+        self.declare_parameter("cv_detect_server_url", "http://192.168.1.4:8000")
 
         port                 = self.get_parameter("port").value
         baud                 = self.get_parameter("baud").value
@@ -87,6 +89,7 @@ class VisionPlaceNode(Node):
         self._detect_timeout = self.get_parameter("detect_timeout_sec").value
         coord_topic          = self.get_parameter("coord_topic").value
         coord_enable_service = self.get_parameter("coord_enable_service").value
+        self._cv_server_url  = self.get_parameter("cv_detect_server_url").value
 
         if _MC_OK:
             try:
@@ -146,7 +149,19 @@ class VisionPlaceNode(Node):
         self.get_logger().info(f"실제 EE 좌표 전달: {[round(c, 2) for c in coords]}")
 
     def _send_cv_config(self, profile: dict) -> None:
-        pass  # HSV 파라미터는 cv_detect_server.py 실행 인자로 관리
+        # HSV/W/H → cv_detect_server (HTTP POST /config)
+        cfg = {}
+        for key in ("hsv_lower", "hsv_upper", "min_w", "max_w", "min_h", "max_h",
+                    "min_area", "max_area", "morph_k"):
+            if key in profile and profile[key] is not None:
+                cfg[key] = profile[key]
+        if cfg:
+            try:
+                url = self._cv_server_url.rstrip("/") + "/config"
+                resp = requests.post(url, json=cfg, timeout=2.0)
+                self.get_logger().info(f"cv_detect_server /config 전송: {cfg}")
+            except Exception as exc:
+                self.get_logger().warn(f"cv_detect_server /config 전송 실패: {exc}")
 
     def _load_profile(self, location: str) -> Optional[dict]:
         return _PROFILES.get(location)

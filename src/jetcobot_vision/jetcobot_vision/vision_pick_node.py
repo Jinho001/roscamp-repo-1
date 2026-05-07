@@ -19,6 +19,7 @@ import time
 import threading
 from typing import Optional
 
+import requests
 import yaml
 from ament_index_python.packages import get_package_share_directory
 import rclpy
@@ -75,6 +76,7 @@ class VisionPickNode(Node):
         self.declare_parameter("detect_timeout_sec",   10.0)
         self.declare_parameter("coord_topic",          "/coord_transform_node/pick_point")
         self.declare_parameter("coord_enable_service", "/coord_transform_node/enable")
+        self.declare_parameter("cv_detect_server_url", "http://192.168.1.4:8000")
 
         port                      = self.get_parameter("port").value
         baud                      = self.get_parameter("baud").value
@@ -86,6 +88,7 @@ class VisionPickNode(Node):
         self._detect_timeout      = self.get_parameter("detect_timeout_sec").value
         coord_topic               = self.get_parameter("coord_topic").value
         coord_enable_service      = self.get_parameter("coord_enable_service").value
+        self._cv_server_url       = self.get_parameter("cv_detect_server_url").value
 
         if _MC_OK:
             try:
@@ -156,7 +159,7 @@ class VisionPickNode(Node):
     # ── 헬퍼: coord_transform_node 파라미터 업데이트 ─────────────────────────────
 
     def _send_cv_config(self, profile: dict) -> None:
-        # z_surface_mm을 coord_transform_node 파라미터로 업데이트
+        # 1. z_surface_mm → coord_transform_node (ROS2 SetParameters)
         if "z_surface_mm" in profile and profile["z_surface_mm"] is not None:
             z = float(profile["z_surface_mm"])
             try:
@@ -172,6 +175,20 @@ class VisionPickNode(Node):
                     self.get_logger().info(f"z_surface_mm 업데이트: {z} mm")
             except Exception as exc:
                 self.get_logger().warn(f"z_surface_mm 업데이트 실패: {exc}")
+
+        # 2. HSV/W/H → cv_detect_server (HTTP POST /config)
+        cfg = {}
+        for key in ("hsv_lower", "hsv_upper", "min_w", "max_w", "min_h", "max_h",
+                    "min_area", "max_area", "morph_k"):
+            if key in profile and profile[key] is not None:
+                cfg[key] = profile[key]
+        if cfg:
+            try:
+                url = self._cv_server_url.rstrip("/") + "/config"
+                resp = requests.post(url, json=cfg, timeout=2.0)
+                self.get_logger().info(f"cv_detect_server /config 전송: {cfg}")
+            except Exception as exc:
+                self.get_logger().warn(f"cv_detect_server /config 전송 실패: {exc}")
 
     # ── 헬퍼: location 프로파일 로드 ─────────────────────────────────────────
 
