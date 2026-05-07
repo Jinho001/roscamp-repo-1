@@ -106,6 +106,9 @@ class VisionPickPlaceNode(Node):
                 self.get_logger().error(f"MyCobot 연결 실패: {exc}")
                 self._mc = None
 
+        # 동시 실행 방지 (한 번에 pick 또는 place 중 하나만)
+        self._action_lock = threading.Lock()
+
         # PickPoint 구독 (pick/place 공용)
         self._pick_points: list[PickPoint] = []
         self._pick_lock = threading.Lock()
@@ -159,156 +162,178 @@ class VisionPickPlaceNode(Node):
 
     async def _execute_pick(self, goal_handle) -> VisionPick.Result:
         """Pick Action 실행."""
-        location = goal_handle.request.location
-        box_index = goal_handle.request.box_index if hasattr(goal_handle.request, 'box_index') else -1
-        fb = VisionPick.Feedback()
-        res = VisionPick.Result()
-
-        self.get_logger().info(f"[Pick] 실행 시작  location={location}  box_index={box_index}")
-
-        # Phase 1: moving
-        self._fb(goal_handle, fb, "moving", 0.10)
-
-        profile = self._load_profile(location)
-        if profile is None:
-            return self._abort(goal_handle, res, f"알 수 없는 location: '{location}'")
-
-        # 비전 기반 pick
-        self._send_cv_config(profile)
-        self._set_coord_transform(False)
-
-        if not self._move_to_observe(location, profile):
-            self._set_coord_transform(False)
-            return self._abort(goal_handle, res, f"observe_pose 이동 실패: {location}")
-
-        if self._mc is not None:
-            actual = self._mc.get_coords()
-            if actual and len(actual) == 6:
-                self._update_coord_transform_pose(actual)
-
-        self._set_coord_transform(True)
-
-        # Phase 2: detecting
-        self._fb(goal_handle, fb, "detecting", 0.30)
-        pick_pt = self._wait_for_point(box_index)
-        if pick_pt is None:
-            self._set_coord_transform(False)
-            return self._abort(goal_handle, res, "검출 타임아웃")
-
-        self._set_coord_transform(False)
-
-        if goal_handle.is_cancel_requested:
-            goal_handle.canceled()
-            res.success, res.message = False, "Goal 취소됨"
+        if not self._action_lock.acquire(blocking=False):
+            res = VisionPick.Result()
+            res.success = False
+            res.message = "다른 동작(Pick/Place) 진행 중. 기다려주세요."
+            self.get_logger().warn(res.message)
+            goal_handle.abort()
             return res
 
-        # Phase 3: transforming
-        self._fb(goal_handle, fb, "transforming", 0.50)
-        x_mm = pick_pt.x * 1000.0
-        y_mm = pick_pt.y * 1000.0
-        z_mm = pick_pt.z * 1000.0
-        yaw_deg = pick_pt.yaw_deg
+        try:
+            location = goal_handle.request.location
+            box_index = goal_handle.request.box_index if hasattr(goal_handle.request, 'box_index') else -1
+            fb = VisionPick.Feedback()
+            res = VisionPick.Result()
 
-        offset = profile.get("pick_offset_mm", [0.0, 0.0, 0.0])
-        x_mm += offset[0]
-        y_mm += offset[1]
-        z_mm += offset[2]
+            self.get_logger().info(f"[Pick] 실행 시작  location={location}  box_index={box_index}")
 
-        self.get_logger().info(
-            f"[Pick] 픽업 좌표: x={x_mm:.1f} y={y_mm:.1f} z={z_mm:.1f} mm  yaw={yaw_deg:.1f} deg"
-        )
-        if any(o != 0.0 for o in offset):
-            self.get_logger().info(f"[Pick] 보정값 적용: dx={offset[0]:.1f} dy={offset[1]:.1f} dz={offset[2]:.1f} mm")
+            # Phase 1: moving
+            self._fb(goal_handle, fb, "moving", 0.10)
 
-        # Phase 4: picking
-        self._fb(goal_handle, fb, "picking", 0.70)
-        if not self._do_pick(x_mm, y_mm, z_mm, yaw_deg, profile):
-            return self._abort(goal_handle, res, "픽업 동작 실패")
+            profile = self._load_profile(location)
+            if profile is None:
+                return self._abort(goal_handle, res, f"알 수 없는 location: '{location}'")
 
-        # Phase 5: done
-        self._fb(goal_handle, fb, "done", 1.00)
-        res.success = True
-        res.message = f"location={location} 픽업 완료"
-        res.pick_point_base.x = pick_pt.x
-        res.pick_point_base.y = pick_pt.y
-        res.pick_point_base.z = pick_pt.z
-        goal_handle.succeed()
-        return res
+            # 비전 기반 pick
+            self._send_cv_config(profile)
+            self._set_coord_transform(False)
+
+            if not self._move_to_observe(location, profile):
+                self._set_coord_transform(False)
+                return self._abort(goal_handle, res, f"observe_pose 이동 실패: {location}")
+
+            if self._mc is not None:
+                actual = self._mc.get_coords()
+                if actual and len(actual) == 6:
+                    self._update_coord_transform_pose(actual)
+
+            self._set_coord_transform(True)
+
+            # Phase 2: detecting
+            self._fb(goal_handle, fb, "detecting", 0.30)
+            pick_pt = self._wait_for_point(box_index)
+            if pick_pt is None:
+                self._set_coord_transform(False)
+                return self._abort(goal_handle, res, "검출 타임아웃")
+
+            self._set_coord_transform(False)
+
+            if goal_handle.is_cancel_requested:
+                goal_handle.canceled()
+                res.success, res.message = False, "Goal 취소됨"
+                return res
+
+            # Phase 3: transforming
+            self._fb(goal_handle, fb, "transforming", 0.50)
+            x_mm = pick_pt.x * 1000.0
+            y_mm = pick_pt.y * 1000.0
+            z_mm = pick_pt.z * 1000.0
+            yaw_deg = pick_pt.yaw_deg
+
+            offset = profile.get("pick_offset_mm", [0.0, 0.0, 0.0])
+            x_mm += offset[0]
+            y_mm += offset[1]
+            z_mm += offset[2]
+
+            self.get_logger().info(
+                f"[Pick] 픽업 좌표: x={x_mm:.1f} y={y_mm:.1f} z={z_mm:.1f} mm  yaw={yaw_deg:.1f} deg"
+            )
+            if any(o != 0.0 for o in offset):
+                self.get_logger().info(f"[Pick] 보정값 적용: dx={offset[0]:.1f} dy={offset[1]:.1f} dz={offset[2]:.1f} mm")
+
+            # Phase 4: picking
+            self._fb(goal_handle, fb, "picking", 0.70)
+            if not self._do_pick(x_mm, y_mm, z_mm, yaw_deg, profile):
+                return self._abort(goal_handle, res, "픽업 동작 실패")
+
+            # Phase 5: done
+            self._fb(goal_handle, fb, "done", 1.00)
+            res.success = True
+            res.message = f"location={location} 픽업 완료"
+            res.pick_point_base.x = pick_pt.x
+            res.pick_point_base.y = pick_pt.y
+            res.pick_point_base.z = pick_pt.z
+            goal_handle.succeed()
+            return res
+        finally:
+            self._action_lock.release()
 
     async def _execute_place(self, goal_handle) -> VisionPlace.Result:
         """Place Action 실행."""
-        location = goal_handle.request.location
-        box_index = goal_handle.request.box_index if hasattr(goal_handle.request, 'box_index') else -1
-        fb = VisionPlace.Feedback()
-        res = VisionPlace.Result()
-
-        self.get_logger().info(f"[Place] 실행 시작  location={location}  box_index={box_index}")
-
-        # Phase 1: moving
-        self._fb(goal_handle, fb, "moving", 0.10)
-
-        profile = self._load_profile(location)
-        if profile is None:
-            return self._abort(goal_handle, res, f"알 수 없는 location: '{location}'")
-
-        self._send_cv_config(profile)
-        self._set_coord_transform(False)
-
-        if not self._move_to_observe(location, profile):
-            self._set_coord_transform(False)
-            return self._abort(goal_handle, res, f"observe_pose 이동 실패: {location}")
-
-        if self._mc is not None:
-            actual = self._mc.get_coords()
-            if actual and len(actual) == 6:
-                self._update_coord_transform_pose(actual)
-
-        self._set_coord_transform(True)
-
-        # Phase 2: detecting
-        self._fb(goal_handle, fb, "detecting", 0.30)
-        place_pt = self._wait_for_point(box_index)
-        if place_pt is None:
-            self._set_coord_transform(False)
-            return self._abort(goal_handle, res, "검출 타임아웃")
-
-        self._set_coord_transform(False)
-
-        if goal_handle.is_cancel_requested:
-            goal_handle.canceled()
-            res.success, res.message = False, "Goal 취소됨"
+        if not self._action_lock.acquire(blocking=False):
+            res = VisionPlace.Result()
+            res.success = False
+            res.message = "다른 동작(Pick/Place) 진행 중. 기다려주세요."
+            self.get_logger().warn(res.message)
+            goal_handle.abort()
             return res
 
-        x_mm = place_pt.x * 1000.0
-        y_mm = place_pt.y * 1000.0
-        z_mm = place_pt.z * 1000.0
-        yaw_deg = place_pt.yaw_deg
+        try:
+            location = goal_handle.request.location
+            box_index = goal_handle.request.box_index if hasattr(goal_handle.request, 'box_index') else -1
+            fb = VisionPlace.Feedback()
+            res = VisionPlace.Result()
 
-        offset = profile.get("pick_offset_mm", [0.0, 0.0, 0.0])
-        x_mm += offset[0]
-        y_mm += offset[1]
-        z_mm += offset[2]
+            self.get_logger().info(f"[Place] 실행 시작  location={location}  box_index={box_index}")
 
-        self.get_logger().info(
-            f"[Place] place 좌표: x={x_mm:.1f} y={y_mm:.1f} z={z_mm:.1f} mm  yaw={yaw_deg:.1f} deg"
-        )
-        if any(o != 0.0 for o in offset):
-            self.get_logger().info(f"[Place] 보정값 적용: dx={offset[0]:.1f} dy={offset[1]:.1f} dz={offset[2]:.1f} mm")
+            # Phase 1: moving
+            self._fb(goal_handle, fb, "moving", 0.10)
 
-        # Phase 3: placing
-        self._fb(goal_handle, fb, "placing", 0.70)
-        if not self._do_place(x_mm, y_mm, z_mm, yaw_deg, profile):
-            return self._abort(goal_handle, res, "place 동작 실패")
+            profile = self._load_profile(location)
+            if profile is None:
+                return self._abort(goal_handle, res, f"알 수 없는 location: '{location}'")
 
-        # Phase 4: done
-        self._fb(goal_handle, fb, "done", 1.00)
-        res.success = True
-        res.message = f"location={location} place 완료"
-        res.place_point_base.x = place_pt.x
-        res.place_point_base.y = place_pt.y
-        res.place_point_base.z = place_pt.z
-        goal_handle.succeed()
-        return res
+            self._send_cv_config(profile)
+            self._set_coord_transform(False)
+
+            if not self._move_to_observe(location, profile):
+                self._set_coord_transform(False)
+                return self._abort(goal_handle, res, f"observe_pose 이동 실패: {location}")
+
+            if self._mc is not None:
+                actual = self._mc.get_coords()
+                if actual and len(actual) == 6:
+                    self._update_coord_transform_pose(actual)
+
+            self._set_coord_transform(True)
+
+            # Phase 2: detecting
+            self._fb(goal_handle, fb, "detecting", 0.30)
+            place_pt = self._wait_for_point(box_index)
+            if place_pt is None:
+                self._set_coord_transform(False)
+                return self._abort(goal_handle, res, "검출 타임아웃")
+
+            self._set_coord_transform(False)
+
+            if goal_handle.is_cancel_requested:
+                goal_handle.canceled()
+                res.success, res.message = False, "Goal 취소됨"
+                return res
+
+            x_mm = place_pt.x * 1000.0
+            y_mm = place_pt.y * 1000.0
+            z_mm = place_pt.z * 1000.0
+            yaw_deg = place_pt.yaw_deg
+
+            offset = profile.get("pick_offset_mm", [0.0, 0.0, 0.0])
+            x_mm += offset[0]
+            y_mm += offset[1]
+            z_mm += offset[2]
+
+            self.get_logger().info(
+                f"[Place] place 좌표: x={x_mm:.1f} y={y_mm:.1f} z={z_mm:.1f} mm  yaw={yaw_deg:.1f} deg"
+            )
+            if any(o != 0.0 for o in offset):
+                self.get_logger().info(f"[Place] 보정값 적용: dx={offset[0]:.1f} dy={offset[1]:.1f} dz={offset[2]:.1f} mm")
+
+            # Phase 3: placing
+            self._fb(goal_handle, fb, "placing", 0.70)
+            if not self._do_place(x_mm, y_mm, z_mm, yaw_deg, profile):
+                return self._abort(goal_handle, res, "place 동작 실패")
+
+            # Phase 4: done
+            self._fb(goal_handle, fb, "done", 1.00)
+            res.success = True
+            res.message = f"location={location} place 완료"
+            res.place_point_base.x = place_pt.x
+            res.place_point_base.y = place_pt.y
+            res.place_point_base.z = place_pt.z
+            goal_handle.succeed()
+            return res
+        finally:
+            self._action_lock.release()
 
     # ── 헬퍼 메서드 ──────────────────────────────────────────────────────────
 
