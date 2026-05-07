@@ -26,10 +26,12 @@ setup(
     extras_require={'test': ['pytest']},
     entry_points={
         'console_scripts': [
-            'coord_transform_node         = jetcobot_vision.coord_transform_node:main',
-            'vision_pick_node             = jetcobot_vision.vision_pick_node:main',
-            'vision_place_node            = jetcobot_vision.vision_place_node:main',
-            'pick_place_coordinator_node  = jetcobot_vision.pick_place_coordinator_node:main',
+            'coord_transform_node            = jetcobot_vision.coord_transform_node:main',
+            'vision_pick_place_node          = jetcobot_vision.vision_pick_place_node:main',
+            'pick_place_coordinator_node     = jetcobot_vision.pick_place_coordinator_node:main',
+            # Deprecated (use vision_pick_place_node instead):
+            # 'vision_pick_node             = jetcobot_vision.vision_pick_node:main',
+            # 'vision_place_node            = jetcobot_vision.vision_place_node:main',
         ],
     },
 )

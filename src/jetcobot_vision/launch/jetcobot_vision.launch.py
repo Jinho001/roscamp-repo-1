@@ -1,11 +1,10 @@
 """
 jetcobot_vision.launch.py
 =========================
-네 노드를 한 번에 기동합니다 (제어 PC에서 실행):
+세 노드를 한 번에 기동합니다 (제어 PC에서 실행):
   1. coord_transform_node           — Static TF + 역투영 → /coord_transform/pick_point
-  2. vision_pick_node               — Action Server /vision_pick
-  3. vision_place_node              — Action Server /vision_place
-  4. pick_place_coordinator_node    — Pick 완료 후 Place 신호 대기
+  2. vision_pick_place_node         — Action Server /vision_pick + /vision_place (통합)
+  3. pick_place_coordinator_node    — Pick 완료 후 Place 신호 대기
 
   ※ ObbBoxArray 토픽은 메인 PC의 cv_detect_server.py가 직접 발행
      python3 src/devices/jetcobot/vision/cv_detect_server.py  (메인 PC)
@@ -46,16 +45,8 @@ def generate_launch_description() -> LaunchDescription:
         ),
         Node(
             package="jetcobot_vision",
-            executable="vision_pick_node",
-            name="vision_pick_node",
-            parameters=[params],
-            output="screen",
-            emulate_tty=True,
-        ),
-        Node(
-            package="jetcobot_vision",
-            executable="vision_place_node",
-            name="vision_place_node",
+            executable="vision_pick_place_node",
+            name="vision_pick_place_node",
             parameters=[params],
             output="screen",
             emulate_tty=True,
