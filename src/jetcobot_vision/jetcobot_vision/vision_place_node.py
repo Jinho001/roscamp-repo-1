@@ -240,9 +240,18 @@ class VisionPlaceNode(Node):
         y_mm    = place_pt.y * 1000.0
         z_mm    = place_pt.z * 1000.0
         yaw_deg = place_pt.yaw_deg
+
+        # Location별 pick_offset 적용
+        offset = profile.get("pick_offset_mm", [0.0, 0.0, 0.0])
+        x_mm += offset[0]
+        y_mm += offset[1]
+        z_mm += offset[2]
+
         self.get_logger().info(
             f"[VisionPlace] place 좌표: x={x_mm:.1f} y={y_mm:.1f} z={z_mm:.1f} mm  yaw={yaw_deg:.1f} deg"
         )
+        if any(o != 0.0 for o in offset):
+            self.get_logger().info(f"[VisionPlace] 보정값 적용: dx={offset[0]:.1f} dy={offset[1]:.1f} dz={offset[2]:.1f} mm")
 
         # ── Phase 3: placing ─────────────────────────────────────────────────
         self._fb(goal_handle, fb, "placing", 0.70)
