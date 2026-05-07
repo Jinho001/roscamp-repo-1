@@ -10,8 +10,8 @@ UDP 스트림을 수신하며 슬라이더로 각 location의 파라미터를 �
     python3 src/devices/jetcobot/vision/profile_tuner.py --list
 
 조작:
-    - 슬라이더로 HSV/W/H 조정
-    - '1'~'5': location 전환 (tray, receiving_zone, pinky_tray_place, ...)
+    - 슬라이더로 HSV/W/H 조정 (Controls 창)
+    - '1'~'5': location 전환 (Source 창에서)
     - 'p': pick_place_profiles.yaml에 저장
     - 'q': 종료
 """
@@ -30,11 +30,26 @@ import yaml
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 from remote_capture import RemoteCapture
 
-WINDOW_SRC  = "Profile Tuner - Source (P:save, Q:quit, 1-5:location, H:help)"
+WINDOW_SRC  = "Profile Tuner - Source (P:save, Q:quit, 1-5:location)"
 WINDOW_MASK = "Profile Tuner - Mask"
+WINDOW_CTRL = "Profile Tuner - Controls (슬라이더 조정)"
 
 LOCATIONS = ["tray", "receiving_zone", "pinky_tray_place", "warehouse_pick", "warehouse_place"]
 VISION_LOCATIONS = ["tray", "receiving_zone", "pinky_tray_place"]
+
+# 슬라이더 UI: (슬라이더 이름, 최솟값, 최댓값, 파라미터 키)
+TRACKBARS = [
+    ("H Lower", 0, 179, ("hsv_lower", 0)),
+    ("S Lower", 0, 255, ("hsv_lower", 1)),
+    ("V Lower", 0, 255, ("hsv_lower", 2)),
+    ("H Upper", 0, 179, ("hsv_upper", 0)),
+    ("S Upper", 0, 255, ("hsv_upper", 1)),
+    ("V Upper", 0, 255, ("hsv_upper", 2)),
+    ("Min W", 0, 640, ("min_w", None)),
+    ("Max W", 0, 640, ("max_w", None)),
+    ("Min H", 0, 640, ("min_h", None)),
+    ("Max H", 0, 640, ("max_h", None)),
+]
 
 
 class ProfileTuner:
@@ -42,21 +57,24 @@ class ProfileTuner:
         self.location = location
         self.profiles_path = Path(profiles_path)
         self.profiles = self._load_profiles()
-        self.cap = RemoteCapture(port=5000)
 
         # 카메라 캘리브레이션 (camera_info.yaml 2026-05 기준)
         self.fx = fx
         self.fy = fy
         self.z_surface_mm = z_surface_mm
 
-        # 초기 파라미터 로드
+        self.cap = RemoteCapture(port=5000)
+
+        # 파라미터 로드
         self.params = self._load_params_from_profile(self.location)
 
         # 창 생성
         cv2.namedWindow(WINDOW_SRC, cv2.WINDOW_NORMAL)
         cv2.namedWindow(WINDOW_MASK, cv2.WINDOW_NORMAL)
+        cv2.namedWindow(WINDOW_CTRL, cv2.WINDOW_NORMAL)
+        cv2.resizeWindow(WINDOW_CTRL, 500, 700)
 
-        self._print_help()
+        self._create_trackbars()
 
     def _load_profiles(self) -> dict:
         """pick_place_profiles.yaml 로드."""
@@ -77,78 +95,36 @@ class ProfileTuner:
             "max_h": profile.get("max_h", 300),
         }
 
-    def _print_help(self) -> None:
-        """헬프 메시지 출력."""
-        print(f"\n{'='*70}")
-        print(f"Profile Tuner — {self.location}")
-        print(f"Camera: fx={self.fx:.2f}, fy={self.fy:.2f}, z={self.z_surface_mm:.1f}mm")
-        print(f"{'='*70}")
-        print("\n【 파라미터 조정 】")
-        print("  h-lower <값>     - HSV H Lower (0-179)")
-        print("  s-lower <값>     - HSV S Lower (0-255)")
-        print("  v-lower <값>     - HSV V Lower (0-255)")
-        print("  h-upper <값>     - HSV H Upper (0-179)")
-        print("  s-upper <값>     - HSV S Upper (0-255)")
-        print("  v-upper <값>     - HSV V Upper (0-255)")
-        print("  min-w <값>       - 최소 너비 (0-640px)")
-        print("  max-w <값>       - 최대 너비 (0-640px)")
-        print("  min-h <값>       - 최소 높이 (0-640px)")
-        print("  max-h <값>       - 최대 높이 (0-640px)")
-        print("\n【 단축키 】")
-        print("  p                - pick_place_profiles.yaml에 저장")
-        print("  1-5              - location 전환")
-        print("  h                - 이 헬프 메시지")
-        print("  q                - 종료")
-        print(f"\n현재값: {self.params}\n")
-
-    def _print_params(self) -> None:
-        """현재 파라미터 출력."""
-        h_low, s_low, v_low = self.params["hsv_lower"]
-        h_up, s_up, v_up = self.params["hsv_upper"]
-        print(f"\n[Current Parameters]")
-        print(f"  HSV Lower: [{h_low:3d}, {s_low:3d}, {v_low:3d}]")
-        print(f"  HSV Upper: [{h_up:3d}, {s_up:3d}, {v_up:3d}]")
-        print(f"  W Range:   {self.params['min_w']:3d} ~ {self.params['max_w']:3d} px")
-        print(f"  H Range:   {self.params['min_h']:3d} ~ {self.params['max_h']:3d} px")
-        print()
-
-    def _update_param(self, key: str, value) -> bool:
-        """파라미터 업데이트. 성공 시 True."""
-        try:
-            if key == "h-lower":
-                self.params["hsv_lower"][0] = max(0, min(179, int(value)))
-            elif key == "s-lower":
-                self.params["hsv_lower"][1] = max(0, min(255, int(value)))
-            elif key == "v-lower":
-                self.params["hsv_lower"][2] = max(0, min(255, int(value)))
-            elif key == "h-upper":
-                self.params["hsv_upper"][0] = max(0, min(179, int(value)))
-            elif key == "s-upper":
-                self.params["hsv_upper"][1] = max(0, min(255, int(value)))
-            elif key == "v-upper":
-                self.params["hsv_upper"][2] = max(0, min(255, int(value)))
-            elif key == "min-w":
-                self.params["min_w"] = max(0, min(640, int(value)))
-            elif key == "max-w":
-                self.params["max_w"] = max(0, min(640, int(value)))
-            elif key == "min-h":
-                self.params["min_h"] = max(0, min(640, int(value)))
-            elif key == "max-h":
-                self.params["max_h"] = max(0, min(640, int(value)))
+    def _create_trackbars(self) -> None:
+        """슬라이더 생성 및 초기값 설정."""
+        for name, min_val, max_val, key_info in TRACKBARS:
+            key, idx = key_info
+            if idx is not None:
+                init_val = self.params[key][idx]
             else:
-                return False
-            self._print_params()
-            return True
-        except (ValueError, IndexError):
-            print("[ERR] 숫자를 입력해주세요")
-            return False
+                init_val = self.params[key]
+            cv2.createTrackbar(name, WINDOW_CTRL, init_val, max_val, lambda v: None)
 
-    def _detect_boxes(self, frame: np.ndarray) -> dict:
+    def _read_trackbars(self) -> dict:
+        """슬라이더 값 읽기."""
+        values = {}
+        for name, _, _, key_info in TRACKBARS:
+            val = cv2.getTrackbarPos(name, WINDOW_CTRL)
+            key, idx = key_info
+            if idx is not None:
+                if key not in values:
+                    values[key] = list(self.params[key])
+                values[key][idx] = val
+            else:
+                values[key] = val
+        return values
+
+    def _detect_boxes(self, frame: np.ndarray, params: dict) -> tuple:
         """cv_detect_server.py의 detect_box_cv 로직."""
-        hsv_lower = np.array(self.params["hsv_lower"], dtype=np.uint8)
-        hsv_upper = np.array(self.params["hsv_upper"], dtype=np.uint8)
-        min_w, max_w = self.params["min_w"], self.params["max_w"]
-        min_h, max_h = self.params["min_h"], self.params["max_h"]
+        hsv_lower = np.array(params["hsv_lower"], dtype=np.uint8)
+        hsv_upper = np.array(params["hsv_upper"], dtype=np.uint8)
+        min_w, max_w = params["min_w"], params["max_w"]
+        min_h, max_h = params["min_h"], params["max_h"]
         min_area = 500
         morph_k = 7
 
@@ -205,7 +181,7 @@ class ProfileTuner:
 
         return mask, detections
 
-    def _draw_frame(self, frame: np.ndarray, detections: list) -> np.ndarray:
+    def _draw_frame(self, frame: np.ndarray, detections: list, params: dict) -> np.ndarray:
         """프레임에 OBB 오버레이."""
         display = frame.copy()
         for i, det in enumerate(detections):
@@ -244,8 +220,8 @@ class ProfileTuner:
         # 헤더: 설정값 및 예상값
         header_text = [
             f"Location: {self.location} | z={self.z_surface_mm:.1f}mm | Expected: 30×20mm (box)",
-            f"Detections: {len(detections)} | HSV: {self.params['hsv_lower']}-{self.params['hsv_upper']}",
-            f"W: {self.params['min_w']}-{self.params['max_w']}px | H: {self.params['min_h']}-{self.params['max_h']}px",
+            f"Detections: {len(detections)} | HSV: {params['hsv_lower']}-{params['hsv_upper']}",
+            f"W: {params['min_w']}-{params['max_w']}px | H: {params['min_h']}-{params['max_h']}px",
         ]
         y_offset = 25
         for text in header_text:
@@ -253,6 +229,66 @@ class ProfileTuner:
             y_offset += 20
 
         return display
+
+    def _draw_controls(self, detections: list, params: dict) -> np.ndarray:
+        """Controls 창: 슬라이더 값과 검출 결과 표시."""
+        # 검은 배경 (800x600)
+        img = np.zeros((700, 500, 3), dtype=np.uint8)
+        img.fill(40)
+
+        y = 20
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        font_size = 0.5
+        color_label = (200, 200, 200)
+        color_value = (0, 255, 255)
+        color_header = (100, 200, 255)
+
+        # 헤더
+        cv2.putText(img, f"Location: {self.location}", (10, y), font, 0.6, color_header, 1)
+        y += 25
+
+        # HSV 값
+        h_l, s_l, v_l = params["hsv_lower"]
+        h_u, s_u, v_u = params["hsv_upper"]
+        cv2.putText(img, "HSV Lower:", (10, y), font, font_size, color_label, 1)
+        cv2.putText(img, f"[{h_l:3d}, {s_l:3d}, {v_l:3d}]", (150, y), font, font_size, color_value, 1)
+        y += 20
+
+        cv2.putText(img, "HSV Upper:", (10, y), font, font_size, color_label, 1)
+        cv2.putText(img, f"[{h_u:3d}, {s_u:3d}, {v_u:3d}]", (150, y), font, font_size, color_value, 1)
+        y += 25
+
+        # W/H 값
+        cv2.putText(img, f"W Range: {params['min_w']:3d} ~ {params['max_w']:3d} px", (10, y), font, font_size, color_label, 1)
+        y += 20
+        cv2.putText(img, f"H Range: {params['min_h']:3d} ~ {params['max_h']:3d} px", (10, y), font, font_size, color_label, 1)
+        y += 30
+
+        # 검출 결과
+        cv2.putText(img, "DETECTIONS:", (10, y), font, 0.55, color_header, 1)
+        y += 25
+
+        if len(detections) == 0:
+            cv2.putText(img, "No detections", (10, y), font, font_size, (100, 100, 100), 1)
+        else:
+            for i, det in enumerate(detections):
+                text = f"#{i}: {det['w']:.0f}px({det['w_mm']:.1f}mm) × {det['h']:.0f}px({det['h_mm']:.1f}mm)"
+                cv2.putText(img, text, (10, y), font, 0.45, (100, 255, 100), 1)
+                y += 18
+                if y > 650:
+                    break
+
+        y += 20
+
+        # 조작 안내
+        cv2.putText(img, "SHORTCUTS:", (10, y), font, 0.55, (255, 180, 100), 1)
+        y += 20
+        for shortcut, desc in [("P", "Save to YAML"), ("Q", "Quit"), ("1-5", "Change location"), ("H", "Help")]:
+            text = f"[{shortcut}] {desc}"
+            cv2.putText(img, text, (15, y), font, 0.4, (180, 180, 180), 1)
+            y += 16
+
+        return img
 
     def _change_location(self, new_loc: str) -> None:
         """location 전환."""
@@ -269,8 +305,14 @@ class ProfileTuner:
         self.location = new_loc
         self.profiles = self._load_profiles()
         self.params = self._load_params_from_profile(self.location)
+
+        # 슬라이더 창 삭제 후 재생성
+        cv2.destroyWindow(WINDOW_CTRL)
+        cv2.namedWindow(WINDOW_CTRL, cv2.WINDOW_NORMAL)
+        cv2.resizeWindow(WINDOW_CTRL, 500, 700)
+        self._create_trackbars()
+
         print(f"[Location] {self.location}로 전환")
-        self._print_params()
 
     def _save(self) -> None:
         """pick_place_profiles.yaml에 저장."""
@@ -289,38 +331,42 @@ class ProfileTuner:
         with open(self.profiles_path, 'w') as f:
             yaml.dump(self.profiles, f, default_flow_style=False, sort_keys=False)
 
-        print(f"\n[SAVED] {self.location}")
+        print(f"\n[✓ SAVED] {self.location}")
         print(f"  HSV: {self.params['hsv_lower']} ~ {self.params['hsv_upper']}")
         print(f"  W: {self.params['min_w']}~{self.params['max_w']}, H: {self.params['min_h']}~{self.params['max_h']}")
         print()
 
     def run(self) -> None:
         """메인 루프."""
-        print("\n[Ready] 영상을 기다리는 중... (stream_sender.py가 보내는 UDP 확인)")
+        print("\n[Ready] 영상을 기다리는 중... (stream_sender.py 실행 필요)")
+        print(f"Location: {self.location} | Camera: fx={self.fx:.2f}, fy={self.fy:.2f}, z={self.z_surface_mm:.1f}mm\n")
 
         while True:
-            # 비디오 프레임 처리
             ret, frame = self.cap.read()
             if not ret or frame is None:
                 time.sleep(0.01)
                 continue
 
-            # 박스 검출 및 화면 그리기
-            mask, detections = self._detect_boxes(frame)
-            display_frame = self._draw_frame(frame, detections)
+            # 현재 슬라이더 값 읽기
+            self.params = self._read_trackbars()
+
+            # 검출
+            mask, detections = self._detect_boxes(frame, self.params)
+
+            # 프레임 그리기
+            display_frame = self._draw_frame(frame, detections, self.params)
+            controls_img = self._draw_controls(detections, self.params)
 
             cv2.imshow(WINDOW_SRC, display_frame)
             cv2.imshow(WINDOW_MASK, mask)
+            cv2.imshow(WINDOW_CTRL, controls_img)
 
-            # 키 입력 처리 (cv2.waitKey 블로킹이므로 비동기 입력 별도 처리)
             key = cv2.waitKey(1) & 0xFF
             if key == ord('q'):
                 print("[EXIT] Quit")
                 break
             elif key == ord('p'):
                 self._save()
-            elif key == ord('h'):
-                self._print_help()
             elif key == ord('1'):
                 self._change_location("tray")
             elif key == ord('2'):
@@ -334,40 +380,6 @@ class ProfileTuner:
 
         self.cap.release()
         cv2.destroyAllWindows()
-
-    def interactive_loop(self) -> None:
-        """터미널 입력 처리 루프 (별도 스레드에서 실행)."""
-        while True:
-            try:
-                cmd = input("> ").strip().lower()
-                if not cmd:
-                    continue
-
-                parts = cmd.split()
-                if len(parts) == 1:
-                    if parts[0] == 'q':
-                        break
-                    elif parts[0] == 'h':
-                        self._print_help()
-                    elif parts[0] in ['1', '2', '3', '4', '5']:
-                        locs = ["tray", "receiving_zone", "pinky_tray_place", "warehouse_pick", "warehouse_place"]
-                        self._change_location(locs[int(parts[0])-1])
-                    elif parts[0] == 'p':
-                        self._save()
-                    elif parts[0] == 'status':
-                        self._print_params()
-                    else:
-                        print("[ERR] 알 수 없는 명령어. 'h'로 도움말 보기")
-                elif len(parts) == 2:
-                    key, val = parts[0], parts[1]
-                    if self._update_param(key, val):
-                        print(f"✓ {key} = {val}")
-                else:
-                    print("[ERR] 형식: <파라미터> <값> 또는 명령어")
-            except EOFError:
-                break
-            except Exception as e:
-                print(f"[ERR] {e}")
 
 
 def main():
@@ -394,26 +406,13 @@ def main():
             print(f"  {i}. {loc}{vision}")
         return
 
-    print(f"\n{'='*60}")
-    print(f"Profile Tuner — Location: {args.location}")
-    print(f"Camera: fx={args.fx:.2f}, fy={args.fy:.2f}")
-    print(f"Z-Surface: {args.z_surface:.1f}mm")
-    print(f"{'='*60}\n")
+    print(f"\n{'='*70}")
+    print(f"Profile Tuner — {args.location}")
+    print(f"Camera: fx={args.fx:.2f}, fy={args.fy:.2f}, z={args.z_surface:.1f}mm")
+    print(f"{'='*70}\n")
 
     tuner = ProfileTuner(args.location, args.config, fx=args.fx, fy=args.fy, z_surface_mm=args.z_surface)
-
-    # 비디오 표시 + 터미널 입력을 동시에 처리
-    import threading
-    input_thread = threading.Thread(target=tuner.interactive_loop, daemon=True)
-    input_thread.start()
-
-    try:
-        tuner.run()
-    except KeyboardInterrupt:
-        print("\n[EXIT] Interrupted")
-    finally:
-        tuner.cap.release()
-        cv2.destroyAllWindows()
+    tuner.run()
 
 
 if __name__ == "__main__":
