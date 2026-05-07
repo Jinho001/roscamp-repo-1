@@ -7,7 +7,7 @@
 
 tray:                                     # 핑키 적재함 상자 픽업
   observe_pose: [-62.4, -87.9, 314.2, -161.81, 0.94, -179.37]
-  z_surface_mm: 95.0
+  z_surface_mm: 90.0
   hsv_lower: [0, 0, 208]
   hsv_upper: [158, 30, 255]
   min_w: 110
@@ -26,16 +26,44 @@ receiving_zone:                           # 회수존(입고존) 상자 픽업
   hsv_lower: [0, 0, 208]
   hsv_upper: [158, 30, 255]
   min_w: 90
-  max_w: 220
-  min_h: 80
-  max_h: 220
+  max_w: 170
+  min_h: 90
+  max_h: 170
   pick_offset_mm: [-17.6, -9.9, 0.0]      # [x, y, z] 보정값 (mm) — 실측 오차 역산
   grasp_roll: -179.98
   grasp_pitch: 5.01
   grasp_yaw_offset: -179.0
   pick_z_offset_mm: 20.0
 
-# NOTE: warehouse_pick은 1차 구현 범위 외 (추후 추가)
+warehouse_pick:                           # 창고 고정 위치 픽업 (비전 없음)
+  fixed_coords:                     # TODO: 실측 후 [x, y, z, rx, ry, rz] 입력
+  pick_offset_mm: [0.0, 0.0, 0.0]
+  grasp_roll: -178.81
+  grasp_pitch: 0.94
+  grasp_yaw_offset: 0.0
+  pick_z_offset_mm: 20.0
 
 # ── Place 프로파일 ─────────────────────────────────────────────────────────────
-# NOTE: pinky_tray_place, warehouse_place는 1차 구현 범위 외 (추후 추가)
+
+pinky_tray_place: 
+  observe_pose: [-62.4, -87.9, 314.2, -161.81, 0.94, -179.37] 
+  z_surface_mm: 70                     # TODO: 실측 후 입력
+  hsv_lower: [0, 0, 208]
+  hsv_upper: [158, 30, 255]
+  min_w: 20
+  max_w: 50
+  min_h: 20
+  max_h: 50
+  pick_offset_mm: [0.0, 0.0, 0.0]
+  grasp_roll: -178.81                     # TODO: place 자세 실측 후 수정
+  grasp_pitch: 0.94
+  grasp_yaw_offset: 0.0
+  pick_z_offset_mm: 20.0
+
+warehouse_place:                          # 창고 고정 위치 place (비전 없음)
+  fixed_coords: null                      # TODO: 실측 후 [x, y, z, rx, ry, rz] 입력
+  pick_offset_mm: [0.0, 0.0, 0.0]
+  grasp_roll: -178.81                     # TODO: place 자세 실측 후 수정
+  grasp_pitch: 0.94
+  grasp_yaw_offset: 0.0
+  pick_z_offset_mm: 20.0
