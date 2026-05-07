@@ -2,8 +2,8 @@
 """
 OBB (Oriented Bounding Box) 검출 API 클라이언트
 =============================================
-FastAPI 기반 OBB 서버(YOLO 또는 OpenCV)에 이미지를 보내
-검출 결과(cx, cy, w, h, theta)를 받아오는 범용 클라이언트 모듈입니다.
+cv_detect_server.py 에 이미지를 보내
+검출 결과(cx, cy, w, h, theta)를 받아오는 클라이언트 모듈.
 
 단독 테스트:
     python3 src/devices/jetcobot/vision/obb_detect_client.py [--device /dev/jetcocam0]
@@ -171,7 +171,7 @@ def _run_live_test(device: str, server_url: str, use_remote: bool = False) -> No
 
 def main():
     parser = argparse.ArgumentParser(
-        description="YOLO OBB 검출 클라이언트 테스트 (TASK-V03-B)"
+        description="OBB 검출 클라이언트 테스트"
     )
     parser.add_argument("--device", default=CAMERA_DEVICE)
     parser.add_argument(

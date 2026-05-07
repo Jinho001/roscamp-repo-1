@@ -1,11 +1,7 @@
 # vision_params.yaml
 # 노드 이름이 launch 파일의 name= 과 반드시 일치해야 합니다.
-
-detect_bridge_node:
-  ros__parameters:
-    server_url:      "http://192.168.1.4:8081/latest"  # 메인 PC cv_detect_server.py
-    poll_hz:         10.0
-    request_timeout: 1.0
+# ※ ObbBoxArray 토픽은 메인 PC의 cv_detect_server.py가 발행
+#    HSV/크기 파라미터는 cv_detect_server.py 실행 인자로 전달
 
 coord_transform_node:
   ros__parameters:
@@ -33,7 +29,6 @@ coord_transform_node:
       - 987.6160053978392
       - 301.19713298628164
       - 238.38042557352367
-    # workspace_config.yaml observe_pose["tray"]
     observe_pose:
       - -62.4
       - -87.9
@@ -58,7 +53,6 @@ vision_pick_node:
     pick_z_offset_mm:      20.0
     detect_timeout_sec:    10.0
     coord_topic:           "/coord_transform_node/pick_point"
-    cv_server_url:         "http://192.168.1.4:8081"  # 메인 PC cv_detect_server.py
     coord_enable_service:  "/coord_transform_node/enable"
 
 vision_place_node:
@@ -75,5 +69,4 @@ vision_place_node:
     pick_z_offset_mm:      20.0
     detect_timeout_sec:    10.0
     coord_topic:           "/coord_transform_node/pick_point"
-    cv_server_url:         "http://192.168.1.4:8081"
     coord_enable_service:  "/coord_transform_node/enable"

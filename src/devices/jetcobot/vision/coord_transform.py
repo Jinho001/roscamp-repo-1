@@ -2,7 +2,7 @@
 """
 핀홀 역산 + Hand-Eye 변환 파이프라인  (TASK-V04)
 ================================================
-YOLO OBB 결과 (cx, cy, theta) → robot base 3D 좌표 변환
+검출 결과 (cx, cy, theta) → robot base 3D 좌표 변환
 
 주요 API:
     get_object_coords_in_base(mc, cx, cy, theta, location, config_dir)
@@ -162,13 +162,13 @@ def get_object_coords_in_base(
     config_dir: str = DEFAULT_CFG,
 ) -> tuple[np.ndarray, float]:
     """
-    YOLO OBB 결과 → robot base 3D 좌표 변환.
+    검출 결과 → robot base 3D 좌표 변환.
 
     Parameters
     ----------
     mc         : MyCobot280 인스턴스
     cx, cy     : 픽셀 좌표 (float)
-    theta      : OBB 장축 각도 (rad, 카메라 픽셀 좌표 기준)
+    theta      : 장축 각도 (rad, 카메라 픽셀 좌표 기준)
     location   : 'tray' | 'shelf_A1' | 'shelf_A2' (workspace_config.yaml 키)
     config_dir : YAML 파일들이 있는 디렉토리
 

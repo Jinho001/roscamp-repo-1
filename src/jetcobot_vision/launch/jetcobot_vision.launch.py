@@ -1,11 +1,13 @@
 """
 jetcobot_vision.launch.py
 =========================
-네 노드를 한 번에 기동합니다:
-  1. detect_bridge_node  — cv_detect_server /latest 폴링 → /detect_bridge/obb_boxes
-  2. coord_transform_node — Static TF + 역투영 → /coord_transform/pick_point
-  3. vision_pick_node     — Action Server /vision_pick
-  4. vision_place_node    — Action Server /vision_place
+세 노드를 한 번에 기동합니다 (제어 PC에서 실행):
+  1. coord_transform_node — Static TF + 역투영 → /coord_transform/pick_point
+  2. vision_pick_node     — Action Server /vision_pick
+  3. vision_place_node    — Action Server /vision_place
+
+  ※ ObbBoxArray 토픽은 메인 PC의 cv_detect_server.py가 직접 발행
+     python3 src/devices/jetcobot/vision/cv_detect_server.py  (메인 PC)
 
 사용법:
   ros2 launch jetcobot_vision jetcobot_vision.launch.py
@@ -33,14 +35,6 @@ def generate_launch_description() -> LaunchDescription:
 
     return LaunchDescription([
         params_arg,
-        Node(
-            package="jetcobot_vision",
-            executable="detect_bridge_node",
-            name="detect_bridge_node",
-            parameters=[params],
-            output="screen",
-            emulate_tty=True,
-        ),
         Node(
             package="jetcobot_vision",
             executable="coord_transform_node",

@@ -22,7 +22,6 @@ import time
 import threading
 from typing import Optional
 
-import requests
 import yaml
 import rclpy
 from rclpy.action import ActionServer, CancelResponse, GoalResponse
@@ -76,7 +75,6 @@ class VisionPlaceNode(Node):
         self.declare_parameter("pick_z_offset_mm",     20.0)
         self.declare_parameter("detect_timeout_sec",   10.0)
         self.declare_parameter("coord_topic",          "/coord_transform_node/pick_point")
-        self.declare_parameter("cv_server_url",        "http://192.168.1.4:8081")
         self.declare_parameter("coord_enable_service", "/coord_transform_node/enable")
 
         port                 = self.get_parameter("port").value
@@ -88,7 +86,6 @@ class VisionPlaceNode(Node):
         self._pick_z_off_mm  = self.get_parameter("pick_z_offset_mm").value
         self._detect_timeout = self.get_parameter("detect_timeout_sec").value
         coord_topic          = self.get_parameter("coord_topic").value
-        self._cv_server_url  = self.get_parameter("cv_server_url").value
         coord_enable_service = self.get_parameter("coord_enable_service").value
 
         if _MC_OK:
@@ -149,20 +146,7 @@ class VisionPlaceNode(Node):
         self.get_logger().info(f"실제 EE 좌표 전달: {[round(c, 2) for c in coords]}")
 
     def _send_cv_config(self, profile: dict) -> None:
-        cfg = {}
-        if "hsv_lower" in profile: cfg["hsv_lower"] = list(profile["hsv_lower"])
-        if "hsv_upper" in profile: cfg["hsv_upper"] = list(profile["hsv_upper"])
-        if "min_w"     in profile: cfg["min_w"]     = int(profile["min_w"])
-        if "max_w"     in profile: cfg["max_w"]     = int(profile["max_w"])
-        if "min_h"     in profile: cfg["min_h"]     = int(profile["min_h"])
-        if "max_h"     in profile: cfg["max_h"]     = int(profile["max_h"])
-        if not cfg:
-            return
-        try:
-            requests.post(f"{self._cv_server_url}/config", json=cfg, timeout=1.0)
-            self.get_logger().info(f"cv_detect_server 파라미터 전송: {cfg}")
-        except Exception as exc:
-            self.get_logger().warn(f"cv_detect_server /config 전송 실패: {exc}")
+        pass  # HSV 파라미터는 cv_detect_server.py 실행 인자로 관리
 
     def _load_profile(self, location: str) -> Optional[dict]:
         return _PROFILES.get(location)

@@ -2,7 +2,7 @@
 """
 비전 기반 픽앤플레이스 통합 모듈  (TASK-V05)
 ============================================
-카메라 촬영 → YOLO OBB 검출 → 좌표 변환 → send_coords 픽업 1사이클
+카메라 촬영 → HSV OBB 검출 → 좌표 변환 → send_coords 픽업 1사이클
 
 safe_pick 미사용 — mc.send_coords() 직접 호출 (pymycobot 내부 IK).
 

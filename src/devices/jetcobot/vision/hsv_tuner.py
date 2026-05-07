@@ -40,9 +40,9 @@ def create_trackbars(window: str) -> None:
     # 초기값: 흰색/밝은 계열 (상자에 맞게 조정 필요)
     cv2.createTrackbar("H Lower", window,   0, 179, lambda v: None)
     cv2.createTrackbar("S Lower", window,   0, 255, lambda v: None)
-    cv2.createTrackbar("V Lower", window, 100, 255, lambda v: None)
-    cv2.createTrackbar("H Upper", window, 179, 179, lambda v: None)
-    cv2.createTrackbar("S Upper", window,  80, 255, lambda v: None)
+    cv2.createTrackbar("V Lower", window, 208, 255, lambda v: None)
+    cv2.createTrackbar("H Upper", window, 158, 179, lambda v: None)
+    cv2.createTrackbar("S Upper", window,  30, 255, lambda v: None)
     cv2.createTrackbar("V Upper", window, 255, 255, lambda v: None)
 
 

@@ -19,7 +19,6 @@ import time
 import threading
 from typing import Optional
 
-import requests
 import yaml
 from ament_index_python.packages import get_package_share_directory
 import rclpy
@@ -74,8 +73,7 @@ class VisionPickNode(Node):
         self.declare_parameter("tcp_offset",           [0.0, 20.0, 100.0])
         self.declare_parameter("pick_z_offset_mm",     20.0)
         self.declare_parameter("detect_timeout_sec",   10.0)
-        self.declare_parameter("coord_topic",          "/coord_transform_node/pick_point_base")
-        self.declare_parameter("cv_server_url",        "http://192.168.1.4:8081")
+        self.declare_parameter("coord_topic",          "/coord_transform_node/pick_point")
         self.declare_parameter("coord_enable_service", "/coord_transform_node/enable")
 
         port                      = self.get_parameter("port").value
@@ -87,7 +85,6 @@ class VisionPickNode(Node):
         self._tcp_offset          = list(self.get_parameter("tcp_offset").value)
         self._detect_timeout      = self.get_parameter("detect_timeout_sec").value
         coord_topic               = self.get_parameter("coord_topic").value
-        self._cv_server_url       = self.get_parameter("cv_server_url").value
         coord_enable_service      = self.get_parameter("coord_enable_service").value
 
         if _MC_OK:
@@ -109,9 +106,8 @@ class VisionPickNode(Node):
         self._latest_pick: Optional[PickPoint] = None
         self._pick_lock = threading.Lock()
 
-        pick_topic = coord_topic.replace("pick_point_base", "pick_point")
         self.create_subscription(
-            PickPoint, pick_topic, self._on_pick_point, 10,
+            PickPoint, coord_topic, self._on_pick_point, 10,
             callback_group=self._cb_group,
         )
 
@@ -157,24 +153,9 @@ class VisionPickNode(Node):
         self._coord_enable_client.call(req)
         self.get_logger().info(f"coord_transform {'활성화' if enable else '비활성화'}")
 
-    # ── 헬퍼: cv_detect_server 파라미터 전송 ─────────────────────────────────
+    # ── 헬퍼: coord_transform_node 파라미터 업데이트 ─────────────────────────────
 
     def _send_cv_config(self, profile: dict) -> None:
-        cfg = {}
-        if "hsv_lower" in profile: cfg["hsv_lower"] = list(profile["hsv_lower"])
-        if "hsv_upper" in profile: cfg["hsv_upper"] = list(profile["hsv_upper"])
-        if "min_w"     in profile: cfg["min_w"]     = int(profile["min_w"])
-        if "max_w"     in profile: cfg["max_w"]     = int(profile["max_w"])
-        if "min_h"     in profile: cfg["min_h"]     = int(profile["min_h"])
-        if "max_h"     in profile: cfg["max_h"]     = int(profile["max_h"])
-        if cfg:
-            try:
-                url = f"{self._cv_server_url}/config"
-                requests.post(url, json=cfg, timeout=1.0)
-                self.get_logger().info(f"cv_detect_server 파라미터 전송: {cfg}")
-            except Exception as exc:
-                self.get_logger().warn(f"cv_detect_server /config 전송 실패: {exc}")
-
         # z_surface_mm을 coord_transform_node 파라미터로 업데이트
         if "z_surface_mm" in profile and profile["z_surface_mm"] is not None:
             z = float(profile["z_surface_mm"])

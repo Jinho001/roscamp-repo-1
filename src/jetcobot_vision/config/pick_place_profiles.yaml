@@ -21,13 +21,13 @@ tray:                                     # 핑키 적재함 상자 픽업
 
 receiving_zone:                           # 회수존(입고존) 상자 픽업
   observe_pose: [96.1, -7.9, 292.8, -172.78, -0.16, -90.14]
-  z_surface_mm: 50.0
+  z_surface_mm: 70.0
   hsv_lower: [0, 0, 208]
   hsv_upper: [158, 30, 255]
-  min_w: 110
-  max_w: 200
-  min_h: 110
-  max_h: 200
+  min_w: 90
+  max_w: 220
+  min_h: 80
+  max_h: 220
   grasp_roll: -179.98
   grasp_pitch: 5.01
   grasp_yaw_offset: -179.0
