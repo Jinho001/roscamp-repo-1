@@ -48,6 +48,15 @@ _GRIPPER_CLOSE = 0
 _MAX_MOVE_WAIT = 30.0
 
 
+def _normalize_angle(angle: float) -> float:
+    """각도를 -180 ~ 180 범위로 정규화."""
+    while angle > 180.0:
+        angle -= 360.0
+    while angle < -180.0:
+        angle += 360.0
+    return angle
+
+
 def _load_profiles() -> dict:
     try:
         pkg_dir = get_package_share_directory("jetcobot_vision")
@@ -443,21 +452,24 @@ class VisionPickPlaceNode(Node):
         yaw_offset = profile.get("grasp_yaw_offset", self._grasp_yaw_off) if profile else self._grasp_yaw_off
         z_offset = profile.get("pick_z_offset_mm", self._pick_z_off_mm) if profile else self._pick_z_off_mm
 
-        rz = yaw_deg + yaw_offset
+        rz = _normalize_angle(yaw_deg + yaw_offset)
         ox, oy, oz = self._tcp_offset
 
         try:
             # Approach
             approach = [x_mm + ox, y_mm + oy, z_mm + oz + z_offset, roll, pitch, rz]
+            self.get_logger().info(f"[Pick] Approach: {[round(v, 2) for v in approach]}")
             self._mc.send_coords(approach, _PICK_SPEED)
             self._wait_moving()
 
             # Grasp
+            self.get_logger().info("[Pick] Gripper Close")
             self._mc.set_gripper_value(_GRIPPER_CLOSE, 30)
             time.sleep(1.0)
 
             # Retreat
             retreat = [x_mm + ox, y_mm + oy, z_mm + oz + z_offset + 50, roll, pitch, rz]
+            self.get_logger().info(f"[Pick] Retreat: {[round(v, 2) for v in retreat]}")
             self._mc.send_coords(retreat, _PICK_SPEED)
             self._wait_moving()
 
@@ -474,21 +486,24 @@ class VisionPickPlaceNode(Node):
         yaw_offset = profile.get("grasp_yaw_offset", self._grasp_yaw_off) if profile else self._grasp_yaw_off
         z_offset = profile.get("pick_z_offset_mm", self._pick_z_off_mm) if profile else self._pick_z_off_mm
 
-        rz = yaw_deg + yaw_offset
+        rz = _normalize_angle(yaw_deg + yaw_offset)
         ox, oy, oz = self._tcp_offset
 
         try:
             # Approach
             approach = [x_mm + ox, y_mm + oy, z_mm + oz + z_offset, roll, pitch, rz]
+            self.get_logger().info(f"[Place] Approach: {[round(v, 2) for v in approach]}")
             self._mc.send_coords(approach, _PLACE_SPEED)
             self._wait_moving()
 
             # Release
+            self.get_logger().info("[Place] Gripper Open")
             self._mc.set_gripper_value(_GRIPPER_OPEN, 30)
             time.sleep(1.0)
 
             # Retreat
             retreat = [x_mm + ox, y_mm + oy, z_mm + oz + z_offset + 50, roll, pitch, rz]
+            self.get_logger().info(f"[Place] Retreat: {[round(v, 2) for v in retreat]}")
             self._mc.send_coords(retreat, _PLACE_SPEED)
             self._wait_moving()
 
