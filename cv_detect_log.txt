@@ -1,0 +1,13 @@
+[INFO] OpenCV HSV 상자 검출 서버 시작
+  HSV 범위: lower=[0, 0, 208]  upper=[158, 30, 255]
+  크기 범위: 110~200 x 110~200 px
+  HTTP 서버: http://0.0.0.0:8081
+  UDP 수신:  0.0.0.0:5000
+  ROS2 토픽: /detect_bridge_node/obb_boxes
+  프리뷰:    OFF
+[ROS2] 퍼블리셔 초기화 완료: /detect_bridge_node/obb_boxes
+[UDP] 수신 대기 중: 0.0.0.0:5000
+INFO:     Started server process [227419]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8081 (Press CTRL+C to quit)

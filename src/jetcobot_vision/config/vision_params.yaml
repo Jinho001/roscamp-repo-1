@@ -72,3 +72,20 @@ vision_place_node:
     coord_topic:           "/coord_transform_node/pick_point"
     coord_enable_service:  "/coord_transform_node/enable"
     cv_detect_server_url:  "http://192.168.1.4:8000"
+
+vision_pick_place_node:
+  ros__parameters:
+    port:                  "/dev/ttyJETCOBOT"
+    baud:                  1000000
+    grasp_roll:            -178.81
+    grasp_pitch:           0.94
+    grasp_yaw_offset:      0.0
+    tcp_offset:
+      - 0.0
+      - 20.0
+      - 100.0
+    pick_z_offset_mm:      20.0
+    detect_timeout_sec:    10.0
+    coord_topic:           "/coord_transform_node/pick_point"
+    coord_enable_service:  "/coord_transform_node/enable"
+    cv_detect_server_url:  "http://192.168.1.4:8081"

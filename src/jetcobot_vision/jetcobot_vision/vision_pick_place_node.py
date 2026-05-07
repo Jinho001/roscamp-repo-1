@@ -88,7 +88,7 @@ class VisionPickPlaceNode(Node):
         self.declare_parameter("detect_timeout_sec",   10.0)
         self.declare_parameter("coord_topic",          "/coord_transform_node/pick_point")
         self.declare_parameter("coord_enable_service", "/coord_transform_node/enable")
-        self.declare_parameter("cv_detect_server_url", "http://192.168.1.4:8000")
+        self.declare_parameter("cv_detect_server_url", "http://192.168.1.4:8081")
 
         port                      = self.get_parameter("port").value
         baud                      = self.get_parameter("baud").value
