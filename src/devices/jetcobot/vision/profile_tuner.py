@@ -222,8 +222,10 @@ class ProfileTuner:
         color_header = (100, 200, 255)
 
         # 헤더
-        cv2.putText(img, f"Location: {self.location}", (10, y), font, 0.7, color_header, 2)
+        cv2.putText(img, f"Location: {self.location} | z={self.z_surface_mm:.1f}mm", (10, y), font, 0.7, color_header, 2)
         y += 35
+        cv2.putText(img, "Expected box size: 30×20mm", (10, y), font, 0.5, (150, 150, 200), 1)
+        y += 20
 
         # HSV 값
         h_l, s_l, v_l = params["hsv_lower"]
@@ -367,24 +369,32 @@ class ProfileTuner:
 def print_help():
     """헬프 메시지."""
     print("""
-【 터미널 명령어 】
+【 HSV 파라미터 】
   h-lower <값>     - HSV H Lower (0-179)
   s-lower <값>     - HSV S Lower (0-255)
   v-lower <값>     - HSV V Lower (0-255)
   h-upper <값>     - HSV H Upper (0-179)
   s-upper <값>     - HSV S Upper (0-255)
   v-upper <값>     - HSV V Upper (0-255)
-  min-w <값>       - Min W (0-640)
-  max-w <값>       - Max W (0-640)
-  min-h <값>       - Min H (0-640)
-  max-h <값>       - Max H (0-640)
+
+【 크기 필터 】
+  min-w <값>       - Min W (0-640px)
+  max-w <값>       - Max W (0-640px)
+  min-h <값>       - Min H (0-640px)
+  max-h <값>       - Max H (0-640px)
+
+【 신뢰성 튜닝 】
+  z-surface <값>   - 작업면 높이 (mm, 소수점 지원)
+                     검출 크기(mm)가 실제 크기와 일치할 때까지 조정
+                     현재값 확인: Controls 창 상단 참고
 
 【 단축키 (영상 창에서) 】
   P: 저장 | Q: 종료 | 1-5: location 전환
 
-예:
+【 예시 】
   > v-lower 215
   > min-w 100
+  > z-surface 95.5
 """)
 
 
@@ -433,27 +443,31 @@ def main():
                 if len(parts) == 2:
                     key, val = parts[0], parts[1]
                     try:
-                        val = int(val)
+                        val = int(val) if '.' not in val else float(val)
                         if key == "h-lower":
-                            tuner.params["hsv_lower"][0] = max(0, min(179, val))
+                            tuner.params["hsv_lower"][0] = max(0, min(179, int(val)))
                         elif key == "s-lower":
-                            tuner.params["hsv_lower"][1] = max(0, min(255, val))
+                            tuner.params["hsv_lower"][1] = max(0, min(255, int(val)))
                         elif key == "v-lower":
-                            tuner.params["hsv_lower"][2] = max(0, min(255, val))
+                            tuner.params["hsv_lower"][2] = max(0, min(255, int(val)))
                         elif key == "h-upper":
-                            tuner.params["hsv_upper"][0] = max(0, min(179, val))
+                            tuner.params["hsv_upper"][0] = max(0, min(179, int(val)))
                         elif key == "s-upper":
-                            tuner.params["hsv_upper"][1] = max(0, min(255, val))
+                            tuner.params["hsv_upper"][1] = max(0, min(255, int(val)))
                         elif key == "v-upper":
-                            tuner.params["hsv_upper"][2] = max(0, min(255, val))
+                            tuner.params["hsv_upper"][2] = max(0, min(255, int(val)))
                         elif key == "min-w":
-                            tuner.params["min_w"] = max(0, min(640, val))
+                            tuner.params["min_w"] = max(0, min(640, int(val)))
                         elif key == "max-w":
-                            tuner.params["max_w"] = max(0, min(640, val))
+                            tuner.params["max_w"] = max(0, min(640, int(val)))
                         elif key == "min-h":
-                            tuner.params["min_h"] = max(0, min(640, val))
+                            tuner.params["min_h"] = max(0, min(640, int(val)))
                         elif key == "max-h":
-                            tuner.params["max_h"] = max(0, min(640, val))
+                            tuner.params["max_h"] = max(0, min(640, int(val)))
+                        elif key == "z-surface":
+                            tuner.z_surface_mm = max(1.0, float(val))
+                            print(f"✓ z_surface_mm = {tuner.z_surface_mm:.1f}mm")
+                            continue
                         else:
                             print("[ERR] 알 수 없는 파라미터")
                             continue
