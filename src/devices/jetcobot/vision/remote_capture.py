@@ -36,12 +36,12 @@ class RemoteCapture:
                 if frame is not None:
                     self.frame = frame
                 
-                # 5초마다 수신 현황 출력
-                import time
-                now = time.time()
-                if now - last_log_time > 5.0:
-                    print(f"[RemoteCap] 수신 중... (누적 {packet_count} 패킷, 최근 발신지: {addr})")
-                    last_log_time = now
+                # 5초마다 수신 현황 출력 (로깅 비활성화)
+                # import time
+                # now = time.time()
+                # if now - last_log_time > 5.0:
+                #     print(f"[RemoteCap] 수신 중... (누적 {packet_count} 패킷, 최근 발신지: {addr})")
+                #     last_log_time = now
 
             except socket.timeout:
                 # timeout 발생 시 아무 로그도 안 찍으면 알 수 없으므로 출력 추가 고려 가능
