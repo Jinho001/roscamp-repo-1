@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """
-VisionPick Action Server 테스트
+VisionPlace Action Server 테스트
 
 Usage:
-    python3 test_vision_pick.py tray
-    python3 test_vision_pick.py receiving_zone
-    python3 test_vision_pick.py --list
+    python3 test_vision_place.py pinky_tray_place
+    python3 test_vision_place.py pinky_tray_place --box 1
 """
 
 import argparse
@@ -17,24 +16,25 @@ try:
     import rclpy
     from rclpy.node import Node
     from rclpy.action import ActionClient
-    from jetcobot_vision_msgs.action import VisionPick
+    from jetcobot_vision_msgs.action import VisionPlace
 except ImportError as e:
     print(f"[ERR] ROS2 setup필요: {e}")
     sys.exit(1)
 
-class VisionPickTestClient(Node):
+class VisionPlaceTestClient(Node):
     def __init__(self):
-        super().__init__("vision_pick_test_client")
-        self.action_client = ActionClient(self, VisionPick, "/vision_pick")
-        self.get_logger().info("VisionPick Action Client 준비 중...")
+        super().__init__("vision_place_test_client")
+        self.action_client = ActionClient(self, VisionPlace, "/vision_place")
+        self.get_logger().info("VisionPlace Action Client 준비 중...")
         if not self.action_client.wait_for_server(timeout_sec=5.0):
-            raise RuntimeError("[ERR] /vision_pick action server 미응답")
-        self.get_logger().info("[OK] /vision_pick action server 연결됨")
+            raise RuntimeError("[ERR] /vision_place action server 미응답")
+        self.get_logger().info("[OK] /vision_place action server 연결됨")
 
     def send_goal(self, location: str, box_index: int = -1):
-        goal = VisionPick.Goal()
+        goal = VisionPlace.Goal()
         goal.location = location
-        goal.box_index = box_index
+        if hasattr(goal, 'box_index'):
+            goal.box_index = box_index
 
         idx_str = f"(index={box_index})" if box_index >= 0 else "(최고 confidence)"
         self.get_logger().info(f"Goal 송신: location={location} {idx_str}")
@@ -55,9 +55,9 @@ class VisionPickTestClient(Node):
                 self.get_logger().info(f"[RESULT]")
                 self.get_logger().info(f"  success: {result.success}")
                 self.get_logger().info(f"  message: {result.message}")
-                if result.pick_point_base:
-                    self.get_logger().info(f"  pick_point_base: ({result.pick_point_base.x:.3f}, "
-                                         f"{result.pick_point_base.y:.3f}, {result.pick_point_base.z:.3f})")
+                if result.place_point_base:
+                    self.get_logger().info(f"  place_point_base: ({result.place_point_base.x:.3f}, "
+                                         f"{result.place_point_base.y:.3f}, {result.place_point_base.z:.3f})")
                 rclpy.shutdown()
 
             result_future.add_done_callback(result_callback)
@@ -65,17 +65,16 @@ class VisionPickTestClient(Node):
         future.add_done_callback(goal_response_callback)
 
 def main():
-    parser = argparse.ArgumentParser(description="Test VisionPick Action Server")
-    parser.add_argument("location", help="Location name (tray, receiving_zone, etc.)")
+    parser = argparse.ArgumentParser(description="Test VisionPlace Action Server")
+    parser.add_argument("location", help="Location name (pinky_tray_place, warehouse_place, etc.)")
     parser.add_argument("--box", type=int, default=-1, help="Box index (-1 = highest confidence)")
-    parser.add_argument("--list", action="store_true", help="List all locations (TODO)")
     parser.add_argument("--timeout", type=float, default=60.0, help="Timeout in seconds")
 
     args = parser.parse_args()
 
     rclpy.init()
     try:
-        client = VisionPickTestClient()
+        client = VisionPlaceTestClient()
         client.send_goal(args.location, args.box)
 
         # Spin with timeout
@@ -85,8 +84,11 @@ def main():
 
         client.destroy_node()
         rclpy.shutdown()
+    except KeyboardInterrupt:
+        client.destroy_node()
+        rclpy.shutdown()
     except Exception as e:
-        print(f"[ERR] {e}")
+        print(f"[ERR] {e}", file=sys.stderr)
         sys.exit(1)
 
 if __name__ == "__main__":
